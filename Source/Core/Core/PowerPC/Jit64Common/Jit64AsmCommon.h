@@ -4,12 +4,20 @@
 
 #pragma once
 
+#include "Core/PowerPC/Gekko.h"
 #include "Core/PowerPC/JitCommon/Jit_Util.h"
 #include "Core/PowerPC/JitCommon/JitAsmCommon.h"
 
-class CommonAsmRoutines : public CommonAsmRoutinesBase, public EmuCodeBlock
+class QuantizedMemoryRoutines : public EmuCodeBlock
+{
+public:
+	void GenQuantizedLoad(bool single, EQuantizeType type, int quantize);
+};
+
+class CommonAsmRoutines : public CommonAsmRoutinesBase, public QuantizedMemoryRoutines
 {
 protected:
+	const u8* GenQuantizedLoadRuntime(bool single, EQuantizeType type);
 	void GenQuantizedLoads();
 	void GenQuantizedStores();
 	void GenQuantizedSingleStores();

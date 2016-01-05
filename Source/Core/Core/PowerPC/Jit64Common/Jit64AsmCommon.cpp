@@ -404,226 +404,219 @@ void CommonAsmRoutines::GenQuantizedSingleStores()
 	singleStoreQuantized[7] = storeSingleS16;
 }
 
-void CommonAsmRoutines::GenQuantizedLoads()
+const u8* CommonAsmRoutines::GenQuantizedLoadRuntime(bool single, EQuantizeType type)
 {
 	const void* start = GetCodePtr();
-
-	const u8* loadPairedIllegal = AlignCode4();
-	UD2();
-
-	// FIXME? This code (in non-MMU mode) assumes all accesses are directly to RAM, i.e.
-	// don't need hardware access handling. This will definitely crash if paired loads occur
-	// from non-RAM areas, but as far as I know, this never happens. I don't know if this is
-	// for a good reason, or merely because no game does this.
-	// If we find something that actually does do this, maybe this should be changed. How
-	// much of a performance hit would it be?
-	const u8* loadPairedFloatTwo = AlignCode4();
-	if (jit->jo.memcheck)
-	{
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 64, 0, QUANTIZED_REGS_TO_SAVE, false, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-		ROL(64, R(RSCRATCH_EXTRA), Imm8(32));
-		MOVQ_xmm(XMM0, R(RSCRATCH_EXTRA));
-	}
-	else if (cpu_info.bSSSE3)
-	{
-		MOVQ_xmm(XMM0, MRegSum(RMEM, RSCRATCH_EXTRA));
-		PSHUFB(XMM0, M(pbswapShuffle2x4));
-	}
-	else
-	{
-		LoadAndSwap(64, RSCRATCH_EXTRA, MRegSum(RMEM, RSCRATCH_EXTRA));
-		ROL(64, R(RSCRATCH_EXTRA), Imm8(32));
-		MOVQ_xmm(XMM0, R(RSCRATCH_EXTRA));
-	}
+	const u8* load = AlignCode4();
+	GenQuantizedLoad(single, type, -1);
 	RET();
+	JitRegister::Register(start, GetCodePtr(), "JIT_QuantizedLoad_%i_%i", type, single);
 
-	const u8* loadPairedFloatOne = AlignCode4();
-	if (jit->jo.memcheck)
-	{
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 32, 0, QUANTIZED_REGS_TO_SAVE, false, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-		MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
-		UNPCKLPS(XMM0, M(m_one));
-	}
-	else if (cpu_info.bSSSE3)
-	{
-		MOVD_xmm(XMM0, MRegSum(RMEM, RSCRATCH_EXTRA));
-		PSHUFB(XMM0, M(pbswapShuffle1x4));
-		UNPCKLPS(XMM0, M(m_one));
-	}
-	else
-	{
-		LoadAndSwap(32, RSCRATCH_EXTRA, MRegSum(RMEM, RSCRATCH_EXTRA));
-		MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
-		UNPCKLPS(XMM0, M(m_one));
-	}
-	RET();
+	return load;
+}
 
-	const u8* loadPairedU8Two = AlignCode4();
-	if (jit->jo.memcheck)
-	{
-		// TODO: Support not swapping in safeLoadToReg to avoid bswapping twice
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 16, 0, QUANTIZED_REGS_TO_SAVE_LOAD, false, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-		ROR(16, R(RSCRATCH_EXTRA), Imm8(8));
-	}
-	else
-	{
-		UnsafeLoadRegToRegNoSwap(RSCRATCH_EXTRA, RSCRATCH_EXTRA, 16, 0);
-	}
-	MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
-	if (cpu_info.bSSE4_1)
-	{
-		PMOVZXBD(XMM0, R(XMM0));
-	}
-	else
-	{
-		PXOR(XMM1, R(XMM1));
-		PUNPCKLBW(XMM0, R(XMM1));
-		PUNPCKLWD(XMM0, R(XMM1));
-	}
-	CVTDQ2PS(XMM0, R(XMM0));
-	SHR(32, R(RSCRATCH2), Imm8(5));
-	MOVQ_xmm(XMM1, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
-	MULPS(XMM0, R(XMM1));
-	RET();
-
-	const u8* loadPairedU8One = AlignCode4();
-	if (jit->jo.memcheck)
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 8, 0, QUANTIZED_REGS_TO_SAVE_LOAD, false, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-	else
-		UnsafeLoadRegToRegNoSwap(RSCRATCH_EXTRA, RSCRATCH_EXTRA, 8, 0); // RSCRATCH_EXTRA = 0x000000xx
-	CVTSI2SS(XMM0, R(RSCRATCH_EXTRA));
-	SHR(32, R(RSCRATCH2), Imm8(5));
-	MULSS(XMM0, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
-	UNPCKLPS(XMM0, M(m_one));
-	RET();
-
-	const u8* loadPairedS8Two = AlignCode4();
-	if (jit->jo.memcheck)
-	{
-		// TODO: Support not swapping in safeLoadToReg to avoid bswapping twice
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 16, 0, QUANTIZED_REGS_TO_SAVE_LOAD, false, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-		ROR(16, R(RSCRATCH_EXTRA), Imm8(8));
-	}
-	else
-	{
-		UnsafeLoadRegToRegNoSwap(RSCRATCH_EXTRA, RSCRATCH_EXTRA, 16, 0);
-	}
-	MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
-	if (cpu_info.bSSE4_1)
-	{
-		PMOVSXBD(XMM0, R(XMM0));
-	}
-	else
-	{
-		PUNPCKLBW(XMM0, R(XMM0));
-		PUNPCKLWD(XMM0, R(XMM0));
-		PSRAD(XMM0, 24);
-	}
-	CVTDQ2PS(XMM0, R(XMM0));
-	SHR(32, R(RSCRATCH2), Imm8(5));
-	MOVQ_xmm(XMM1, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
-	MULPS(XMM0, R(XMM1));
-	RET();
-
-	const u8* loadPairedS8One = AlignCode4();
-	if (jit->jo.memcheck)
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 8, 0, QUANTIZED_REGS_TO_SAVE_LOAD, true, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-	else
-		UnsafeLoadRegToRegNoSwap(RSCRATCH_EXTRA, RSCRATCH_EXTRA, 8, 0, true);
-	CVTSI2SS(XMM0, R(RSCRATCH_EXTRA));
-	SHR(32, R(RSCRATCH2), Imm8(5));
-	MULSS(XMM0, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
-	UNPCKLPS(XMM0, M(m_one));
-	RET();
-
-	const u8* loadPairedU16Two = AlignCode4();
-	// TODO: Support not swapping in (un)safeLoadToReg to avoid bswapping twice
-	if (jit->jo.memcheck)
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 32, 0, QUANTIZED_REGS_TO_SAVE_LOAD, false, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-	else
-		UnsafeLoadRegToReg(RSCRATCH_EXTRA, RSCRATCH_EXTRA, 32, 0, false);
-	ROL(32, R(RSCRATCH_EXTRA), Imm8(16));
-	MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
-	if (cpu_info.bSSE4_1)
-	{
-		PMOVZXWD(XMM0, R(XMM0));
-	}
-	else
-	{
-		PXOR(XMM1, R(XMM1));
-		PUNPCKLWD(XMM0, R(XMM1));
-	}
-	CVTDQ2PS(XMM0, R(XMM0));
-	SHR(32, R(RSCRATCH2), Imm8(5));
-	MOVQ_xmm(XMM1, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
-	MULPS(XMM0, R(XMM1));
-	RET();
-
-	const u8* loadPairedU16One = AlignCode4();
-	if (jit->jo.memcheck)
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 16, 0, QUANTIZED_REGS_TO_SAVE_LOAD, false, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-	else
-		UnsafeLoadRegToReg(RSCRATCH_EXTRA, RSCRATCH_EXTRA, 16, 0, false);
-	CVTSI2SS(XMM0, R(RSCRATCH_EXTRA));
-	SHR(32, R(RSCRATCH2), Imm8(5));
-	MULSS(XMM0, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
-	UNPCKLPS(XMM0, M(m_one));
-	RET();
-
-	const u8* loadPairedS16Two = AlignCode4();
-	if (jit->jo.memcheck)
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 32, 0, QUANTIZED_REGS_TO_SAVE_LOAD, false, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-	else
-		UnsafeLoadRegToReg(RSCRATCH_EXTRA, RSCRATCH_EXTRA, 32, 0, false);
-	ROL(32, R(RSCRATCH_EXTRA), Imm8(16));
-	MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
-	if (cpu_info.bSSE4_1)
-	{
-		PMOVSXWD(XMM0, R(XMM0));
-	}
-	else
-	{
-		PUNPCKLWD(XMM0, R(XMM0));
-		PSRAD(XMM0, 16);
-	}
-	CVTDQ2PS(XMM0, R(XMM0));
-	SHR(32, R(RSCRATCH2), Imm8(5));
-	MOVQ_xmm(XMM1, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
-	MULPS(XMM0, R(XMM1));
-	RET();
-
-	const u8* loadPairedS16One = AlignCode4();
-	if (jit->jo.memcheck)
-		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), 16, 0, QUANTIZED_REGS_TO_SAVE_LOAD, true, SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG);
-	else
-		UnsafeLoadRegToReg(RSCRATCH_EXTRA, RSCRATCH_EXTRA, 16, 0, true);
-	CVTSI2SS(XMM0, R(RSCRATCH_EXTRA));
-	SHR(32, R(RSCRATCH2), Imm8(5));
-	MULSS(XMM0, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
-	UNPCKLPS(XMM0, M(m_one));
-	RET();
-
-
-	JitRegister::Register(start, GetCodePtr(), "JIT_QuantizedLoad");
-
+void CommonAsmRoutines::GenQuantizedLoads()
+{
 	pairedLoadQuantized = reinterpret_cast<const u8**>(const_cast<u8*>(AlignCode16()));
 	ReserveCodeSpace(16 * sizeof(u8*));
 
-	pairedLoadQuantized[0] = loadPairedFloatTwo;
-	pairedLoadQuantized[1] = loadPairedIllegal;
-	pairedLoadQuantized[2] = loadPairedIllegal;
-	pairedLoadQuantized[3] = loadPairedIllegal;
-	pairedLoadQuantized[4] = loadPairedU8Two;
-	pairedLoadQuantized[5] = loadPairedU16Two;
-	pairedLoadQuantized[6] = loadPairedS8Two;
-	pairedLoadQuantized[7] = loadPairedS16Two;
+	for (int type = 0; type < 8; type++)
+		pairedLoadQuantized[type] = GenQuantizedLoadRuntime(false, (EQuantizeType)type);
+	for (int type = 0; type < 8; type++)
+		pairedLoadQuantized[type + 8] = GenQuantizedLoadRuntime(true, (EQuantizeType)type);
+}
 
-	pairedLoadQuantized[8] = loadPairedFloatOne;
-	pairedLoadQuantized[9] = loadPairedIllegal;
-	pairedLoadQuantized[10] = loadPairedIllegal;
-	pairedLoadQuantized[11] = loadPairedIllegal;
-	pairedLoadQuantized[12] = loadPairedU8One;
-	pairedLoadQuantized[13] = loadPairedU16One;
-	pairedLoadQuantized[14] = loadPairedS8One;
-	pairedLoadQuantized[15] = loadPairedS16One;
+void QuantizedMemoryRoutines::GenQuantizedLoad(bool single, EQuantizeType type, int quantize)
+{
+	// Note that this method assumes that inline methods know the value of quantize ahead of
+	// time. The methods generated AOT assume that the quantize flag is placed in RSCRATCH in
+	// the second lowest byte, ie: 0x0000xx00
+
+	static const u8 sizes[] = { 32, 0, 0, 0, 8, 16, 8, 16 };
+	int size = sizes[type] * (single ? 1 : 2);
+
+	// illegal
+	if (type == QUANTIZE_INVALID1 || type == QUANTIZE_INVALID2 || type == QUANTIZE_INVALID3)
+	{
+		UD2();
+		return;
+	}
+
+	bool isInline = quantize != -1;
+	bool extend = single && (type == QUANTIZE_S8 || type == QUANTIZE_S16);
+
+	if (jit->jo.memcheck)
+	{
+		BitSet32 regsToSave = (type == QUANTIZE_FLOAT) ? QUANTIZED_REGS_TO_SAVE : QUANTIZED_REGS_TO_SAVE_LOAD;
+		int flags = isInline ? 0 : SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_PROLOG;
+		SafeLoadToReg(RSCRATCH_EXTRA, R(RSCRATCH_EXTRA), size, 0, regsToSave, extend, flags);
+		if (!single && (type == QUANTIZE_U8 || type == QUANTIZE_S8))
+		{
+			// TODO: Support not swapping in safeLoadToReg to avoid bswapping twice
+			ROR(16, R(RSCRATCH_EXTRA), Imm8(8));
+		}
+	}
+	else
+	{
+		switch (type)
+		{
+		case QUANTIZE_FLOAT:
+			// Optimized load below
+			break;
+		case QUANTIZE_U8:
+		case QUANTIZE_S8:
+			UnsafeLoadRegToRegNoSwap(RSCRATCH_EXTRA, RSCRATCH_EXTRA, size, 0, extend);
+			break;
+		case QUANTIZE_U16:
+		case QUANTIZE_S16:
+			UnsafeLoadRegToReg(RSCRATCH_EXTRA, RSCRATCH_EXTRA, size, 0, extend);
+			break;
+		default:
+			break;
+		}
+	}
+
+	// Float load skips the quantization step
+	if (type == QUANTIZE_FLOAT)
+	{
+		if (single)
+		{
+			if (jit->jo.memcheck)
+			{
+				MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
+			}
+			else if (cpu_info.bSSSE3)
+			{
+				MOVD_xmm(XMM0, MRegSum(RMEM, RSCRATCH_EXTRA));
+				PSHUFB(XMM0, M(pbswapShuffle1x4));
+			}
+			else
+			{
+				LoadAndSwap(32, RSCRATCH_EXTRA, MRegSum(RMEM, RSCRATCH_EXTRA));
+				MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
+			}
+
+			UNPCKLPS(XMM0, M(m_one));
+		}
+		else
+		{
+			// FIXME? This code (in non-MMU mode) assumes all accesses are directly to RAM, i.e.
+			// don't need hardware access handling. This will definitely crash if paired loads occur
+			// from non-RAM areas, but as far as I know, this never happens. I don't know if this is
+			// for a good reason, or merely because no game does this.
+			// If we find something that actually does do this, maybe this should be changed. How
+			// much of a performance hit would it be?
+			if (jit->jo.memcheck)
+			{
+				ROL(64, R(RSCRATCH_EXTRA), Imm8(32));
+				MOVQ_xmm(XMM0, R(RSCRATCH_EXTRA));
+			}
+			else if (cpu_info.bSSSE3)
+			{
+				MOVQ_xmm(XMM0, MRegSum(RMEM, RSCRATCH_EXTRA));
+				PSHUFB(XMM0, M(pbswapShuffle2x4));
+			}
+			else
+			{
+				LoadAndSwap(64, RSCRATCH_EXTRA, MRegSum(RMEM, RSCRATCH_EXTRA));
+				ROL(64, R(RSCRATCH_EXTRA), Imm8(32));
+				MOVQ_xmm(XMM0, R(RSCRATCH_EXTRA));
+			}
+		}
+		return;
+	}
+
+	if (single)
+	{
+		CVTSI2SS(XMM0, R(RSCRATCH_EXTRA));
+
+		if (quantize == -1)
+		{
+			SHR(32, R(RSCRATCH2), Imm8(5));
+			MULSS(XMM0, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
+		}
+		else if (quantize > 0)
+		{
+			// MOV(32, R(RSCRATCH2), Imm32(quantize << 3));
+			// MOVQ_xmm(XMM1, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
+			// MULSS(XMM0, R(XMM1));
+			MULSS(XMM0, M(&m_dequantizeTableS[quantize * 2]));
+		}
+		UNPCKLPS(XMM0, M(m_one));
+	}
+	else
+	{
+		switch (type)
+		{
+		case QUANTIZE_U8:
+			MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
+			if (cpu_info.bSSE4_1)
+			{
+				PMOVZXBD(XMM0, R(XMM0));
+			}
+			else
+			{
+				PXOR(XMM1, R(XMM1));
+				PUNPCKLBW(XMM0, R(XMM1));
+				PUNPCKLWD(XMM0, R(XMM1));
+			}
+			break;
+		case QUANTIZE_S8:
+			MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
+			if (cpu_info.bSSE4_1)
+			{
+				PMOVSXBD(XMM0, R(XMM0));
+			}
+			else
+			{
+				PUNPCKLBW(XMM0, R(XMM0));
+				PUNPCKLWD(XMM0, R(XMM0));
+				PSRAD(XMM0, 24);
+			}
+			break;
+		case QUANTIZE_U16:
+			ROL(32, R(RSCRATCH_EXTRA), Imm8(16));
+			MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
+			if (cpu_info.bSSE4_1)
+			{
+				PMOVZXWD(XMM0, R(XMM0));
+			}
+			else
+			{
+				PXOR(XMM1, R(XMM1));
+				PUNPCKLWD(XMM0, R(XMM1));
+			}
+			break;
+		case QUANTIZE_S16:
+			ROL(32, R(RSCRATCH_EXTRA), Imm8(16));
+			MOVD_xmm(XMM0, R(RSCRATCH_EXTRA));
+			if (cpu_info.bSSE4_1)
+			{
+				PMOVSXWD(XMM0, R(XMM0));
+			}
+			else
+			{
+				PUNPCKLWD(XMM0, R(XMM0));
+				PSRAD(XMM0, 16);
+			}
+			break;
+		default:
+			break;
+		}
+		CVTDQ2PS(XMM0, R(XMM0));
+
+		if (quantize == -1)
+		{
+			SHR(32, R(RSCRATCH2), Imm8(5));
+			MOVQ_xmm(XMM1, MDisp(RSCRATCH2, (u32)(u64)m_dequantizeTableS));
+			MULPS(XMM0, R(XMM1));
+		}
+		else if (quantize > 0)
+		{
+			MOVQ_xmm(XMM1, M(&m_dequantizeTableS[quantize * 2]));
+			MULPS(XMM0, R(XMM1));
+		}
+	}
+
+	return;
 }
