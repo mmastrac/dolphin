@@ -846,6 +846,7 @@ void UpdateTitle()
 	// This is our final "frame counter" string
 	std::string SMessage = StringFromFormat("%s | %s", SSettings.c_str(), SFPS.c_str());
 
+	printf("%s\n", SMessage.c_str());
 	// Update the audio timestretcher with the current speed
 	if (g_sound_stream)
 	{

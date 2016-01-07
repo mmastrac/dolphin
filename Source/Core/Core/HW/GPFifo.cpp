@@ -58,7 +58,7 @@ void ResetGatherPipe()
 	m_gatherPipeCount = 0;
 }
 
-static void UpdateGatherPipe()
+void UpdateGatherPipe()
 {
 	u32 cnt;
 	u8* curMem = Memory::GetPointer(ProcessorInterface::Fifo_CPUWritePointer);

@@ -244,6 +244,7 @@ void Interpreter::mtspr(UGeckoInstruction _inst)
 	u32 iIndex = (_inst.SPRU << 5) | (_inst.SPRL & 0x1F);
 	u32 oldValue = rSPR(iIndex);
 	rSPR(iIndex) = rGPR[_inst.RD];
+	// printf("mtspr %08x\n", iIndex);
 
 	//TODO - check processor privilege level - many of these require privilege
 	//XER LR CTR are the only ones available in user mode, time base can be read too.

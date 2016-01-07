@@ -230,9 +230,11 @@ void Jit64::Shutdown()
 	asm_routines.Shutdown();
 	farcode.Shutdown();
 }
+#include "Common/GekkoDisassembler.h"
 
 void Jit64::FallBackToInterpreter(UGeckoInstruction inst)
 {
+	printf("fallback! %08x %s\n", js.compilerPC, GekkoDisassembler::Disassemble(inst.hex, js.compilerPC).c_str());
 	gpr.Flush();
 	fpr.Flush();
 	if (js.op->opinfo->flags & FL_ENDBLOCK)
@@ -308,9 +310,14 @@ bool Jit64::Cleanup()
 
 	if (jo.optimizeGatherPipe && js.fifoBytesThisBlock > 0)
 	{
+		printf("gather pipe 1\n");
+		// MOV(32, R(RSCRATCH), M(&GPFifo::m_gatherPipeCount));
+		// CMP(32, R(RSCRATCH), Imm8(GPFifo::GATHER_PIPE_SIZE));
+		// FixupBranch exit = J_CC(CC_L, false);
 		ABI_PushRegistersAndAdjustStack({}, 0);
-		ABI_CallFunction((void *)&GPFifo::FastCheckGatherPipe);
+		ABI_CallFunction((void *)&GPFifo::UpdateGatherPipe);
 		ABI_PopRegistersAndAdjustStack({}, 0);
+		// SetJumpTarget(exit);
 		did_something = true;
 	}
 
@@ -686,10 +693,15 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 		if (jo.optimizeGatherPipe && js.fifoBytesThisBlock >= 32)
 		{
 			js.fifoBytesThisBlock -= 32;
+			printf("gather pipe 2\n");
+			MOV(32, R(RSCRATCH), M(&GPFifo::m_gatherPipeCount));
+			CMP(32, R(RSCRATCH), Imm8(GPFifo::GATHER_PIPE_SIZE));
+			FixupBranch exit = J_CC(CC_L, false);
 			BitSet32 registersInUse = CallerSavedRegistersInUse();
 			ABI_PushRegistersAndAdjustStack(registersInUse, 0);
 			ABI_CallFunction((void *)&GPFifo::FastCheckGatherPipe);
 			ABI_PopRegistersAndAdjustStack(registersInUse, 0);
+			SetJumpTarget(exit);
 			gatherPipeIntCheck = true;
 		}
 

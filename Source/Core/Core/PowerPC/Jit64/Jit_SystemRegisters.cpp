@@ -245,6 +245,20 @@ void Jit64::mtspr(UGeckoInstruction inst)
 			break;
 		}
 
+	case SPR_DEC:
+		{
+			gpr.BindToRegister(d, true, false);
+			MOV(32, PPCSTATE(spr[iIndex]), gpr.R(d));
+			BitSet32 regs = CallerSavedRegistersInUse();
+			ABI_PushRegistersAndAdjustStack(regs, 0);
+			ABI_CallFunction((void*)SystemTimers::DecrementerSet);
+			ABI_PopRegistersAndAdjustStack(regs, 0);
+			break;
+		}
+
+	// case SPR_DMAL:
+	// 	break;
+
 	default:
 		FALLBACK_IF(true);
 	}
