@@ -4,192 +4,524 @@
 
 #pragma once
 
-#include <array>
-#include <cinttypes>
-
 #include "Common/x64Emitter.h"
+#include "Core/PowerPC/Jit64/Jit.h"
+#include "Core/PowerPC/Jit64/JitRegCache.h"
+#include "Core/PowerPC/JitCommon/JitBase.h"
+#include "Core/PowerPC/JitCommon/Jit_Util.h"
 #include "Core/PowerPC/PPCAnalyst.h"
 
-enum FlushMode
+// The register cache manages a set of virtual registers on both the PowerPC
+// and X64 side. The important concepts for the register cache are:
+//
+//
+// Locking: a PowerPC register must be locked before you can interact with it.
+// This ensures that the register does not move at any time while you may be
+// potentially generating code that references it. A locked register *may*
+// move under explicit instruction from a Flush(), FlushBatch(), Bind() or
+// other call, but will not move indirectly as a result of requesting a
+// scratch register or binding a different register.
+//
+// The lock is held as long as the C++ object representing the lock is in
+// scope. If a lock result (the "Any" class) is assigned to another non-
+// reference variable, the lifetime of that lock is at least as long as both
+// of those variables.
+//
+// An immediate value may be assigned to a PowerPC register which binds the
+// register in a special state named "away". The register can continue to be
+// used as-is, but its location will resolve as a Gen::Imm32().
+//
+//
+// Binding: for X64 instructions that require a register, a PowerPC register
+// may be bound to one as needed. As with a lock, the register will not be
+// moved as long as both the original lock and the bind lock (the "Native"
+// class) are in scope. When a binding goes out of scope the register
+// continues to hold the PowerPC register's value, but it may be flushed to
+// make way for a future binding.
+//
+// Immediate: a virtual register with a 32-bit value (signed or unsigned) can
+// be allocated by the register cache and used (read-only) exactly the same
+// way as a standard register.
+//
+//
+// Borrowing: an X64 register may be borrowed for use as a scratch register,
+// or to communicate with a method that requires inputs to be in certain
+// registers. If a specific register is requested to be borrowed, that
+// register will be freed unless it allocated to a register that is bound and
+// locked (or a previous borrow) in which case an assertion is raised.
+//
+// Realization: A lock, binding or borrow is not realized until the first
+// operation that queries it state. This allows the register cache to shuffle
+// registers around until the register's location needs to be known which
+// gives it some extra flexibility in cases where register use makes things
+// tight. The register cache will throw an assertion if a lock is never used
+// before it goes out of scope.
+
+namespace Jit64Reg
 {
-	FLUSH_ALL,
-	FLUSH_MAINTAIN_STATE,
+
+static const int NUMXREGS = 16;
+
+using namespace Gen;
+
+typedef size_t reg_t;
+
+enum class BindMode
+{
+	// Loads a register with the contents of this register, does not mark it dirty
+	Read,
+	// Allocates a register without loading the guest register, marks it dirty
+	Write,
+	// Loads the guest register into a native register, marks it dirty
+	ReadWrite,
+	// Begins a transaction on this register that will either be rolled back or committed,
+	// depending on the method called on Registers. This will implicitly bind the guest
+	// register to a native register for the entire scope of the transaction. Attempting to
+	// flush, sync or rebind this register before rollback/commit is an error.
+	WriteTransaction,
+	// Asserts that the register is already loaded -- doesn't load or mark it as dirty
+	Reuse,
 };
 
-struct PPCCachedReg
+enum class Type
 {
-	Gen::OpArg location;
-	bool away;  // value not in source register
-	bool locked;
+	// PPC GPR
+	GPR,
+	// PPC FPU
+	FPU,
 };
 
-struct X64CachedReg
+enum class RegisterType
 {
-	size_t ppcReg;
-	bool dirty;
-	bool free;
-	bool locked;
+	Bind,
+	Borrow,
+	Immediate,
+	PPC,	
 };
 
-typedef int XReg;
-typedef int PReg;
-
-#define NUMXREGS 16
-
-class RegCache
+enum class FlushMode
 {
+	FlushAll,
+	FlushMaintainState
+};
+
+static const std::vector<X64Reg> GPR_ALLOCATION_ORDER =
+{
+	// R12, when used as base register, for example in a LEA, can generate bad code! Need to look into this.
+#ifdef _WIN32
+	RSI, RDI, R13, R14, R15, R8, R9, R10, R11, R12, RCX
+#else
+	R12, R13, R14, R15, RSI, RDI, R8, R9, R10, R11, RCX
+#endif
+};
+
+static const std::vector<X64Reg> GPR_SCRATCH_ALLOCATION_ORDER =
+{
+	RSCRATCH, RSCRATCH2
+};
+
+static const std::vector<X64Reg> FPU_ALLOCATION_ORDER =
+{
+	XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, XMM2, XMM3, XMM4, XMM5
+};
+
+static const std::vector<X64Reg> FPU_SCRATCH_ALLOCATION_ORDER =
+{
+	XMM0, XMM1
+};
+
+// Forward
+template <Type T>
+class RegisterClass;
+template <Type T>
+class RegisterClassBase;
+class Registers;
+class PPC;
+class Tx;
+class Imm;
+template <Type T>
+class Native;
+template <Type T>
+class Any;
+
+struct RegisterData
+{
+	RegisterType type;
+	X64Reg xreg;
+	reg_t reg;
+	u32 val;
+	BindMode mode;
+};
+
+// Every register type (borrowed, bound, PowerPC and immediate) is represented
+// by an Any<T> (where T is GPR or FPU). This class, however, delegates to the
+// real register implementation underneath and is mainly used for lock
+// management purposes.
+template <Type T>
+class Any
+{
+	friend class Registers;
+	friend class Native<T>;
+	friend class RegisterClass<T>;
+	friend class RegisterClassBase<T>;
+
+private:
+	Any(RegisterClassBase<T>* reg, RegisterData data): m_reg(reg), m_data(data), m_realized(false)
+	{
+	};
+
+	// A lock is only realized when a caller attempts to cast it to an OpArg or bind it
+	void RealizeLock();
+
+	const Gen::OpArg Location()
+	{
+		if (m_data.type == RegisterType::PPC || m_data.type == RegisterType::Bind)
+			return m_reg->m_regs[m_data.reg].location;
+		_assert_msg_(DYNA_REC, 0, "Invalid operation: not a PPC register");
+		return OpArg();
+	}
+
+public:
+	Any(Any<T>&& other) = default;
+	virtual ~Any() { Unlock(); }
+	Any(const Any<T>& other): m_reg(other.m_reg), m_data(other.m_data)
+	{
+	}
+	Any& operator=(const Any<T>& other)
+	{
+		_assert_msg_(DYNA_REC, 0, "TODO operator=");
+		return *this;
+	}
+
+	// TODO: This shouldn't be necessary
+	void ForceRealize()
+	{
+		RealizeLock();
+	}
+
+	bool IsImm()
+	{
+		RealizeLock();
+		if (m_data.type == RegisterType::Immediate)
+			return true;
+		if (m_data.type == RegisterType::PPC)
+			return Location().IsImm();
+		return false;
+	}
+
+	bool IsZero()
+	{
+		RealizeLock();
+		if (m_data.type == RegisterType::Immediate)
+			return m_data.val == 0;
+		if (m_data.type == RegisterType::PPC)
+			return Location().IsZero();
+		return false;
+	}
+
+	u32 Imm32()
+	{
+		RealizeLock();
+		if (m_data.type == RegisterType::Immediate)
+			return m_data.val;
+		if (m_data.type == RegisterType::PPC)
+			if (Location().IsImm())
+				return Location().Imm32();
+
+		_assert_msg_(DYNA_REC, 0, "Invalid operation: not an immediate");
+		return 0;
+	}
+
+	s32 SImm32()
+	{
+		RealizeLock();
+		if (m_data.type == RegisterType::Immediate)
+			return static_cast<s32>(m_data.val);
+		if (m_data.type == RegisterType::PPC)
+			if (Location().IsImm())
+				return Location().SImm32();
+		_assert_msg_(DYNA_REC, 0, "Invalid operation: not an immediate");
+		return 0;
+	}
+
+	// Returns the guest register represented by this class.
+	u32 PPCRegister()
+	{
+		RealizeLock();
+		if (m_data.type == RegisterType::PPC)
+			return m_data.reg;
+		_assert_msg_(DYNA_REC, 0, "Invalid operation: not a PPC register");
+		return 0;
+	}
+
+	void SetImm32(u32 imm);
+
+	// If this value is an immediate, places it into a register (if there is
+	// room) or back into its long-term memory location. If placed in a
+	// register, the register is marked dirty.
+	void RealizeImmediate();
+
+	// If this value is not an immediate, loads it into a register. 
+	void LoadIfNotImmediate();
+
+	// Sync the current value to the default location but otherwise doesn't move the
+	// register.
+	OpArg Sync();
+
+	// True if this register is available in a native register
+	bool IsRegBound();
+
+	// Forces this register into a native register. While the binding is in scope, it is an 
+	// error to access this register's information.
+	Native<T> Bind(BindMode mode);
+
+	// Shortcut for common bind pattern
+	Native<T> BindWriteAndReadIf(bool cond) { return Bind(cond ? BindMode::ReadWrite : BindMode::Write); }
+
+	// Any register, bound or not, can be used as an OpArg. If not bound, this will return
+	// a pointer into PPCSTATE.
+	operator Gen::OpArg();
+
+	void Lock();
+	void Unlock();
+
+private:
+	RegisterClassBase<T>* m_reg;
+	RegisterData m_data;
+	bool m_realized;
+};
+
+// Native is a lightweight class used to manage scope like Any<T>, but adds a
+// direct cast to X64Reg for borrows and binds.
+template <Type T>
+class Native final : public Any<T>
+{
+	friend class Registers;
+	friend class Any<T>;
+	friend class RegisterClass<T>;
+	friend class RegisterClassBase<T>;
+
+private:
+	Native(RegisterClassBase<T>* reg, RegisterData data): Any<T>(reg, data) {}
+
+public:
+	Native(const Native& other) = default;
+	Native(Native&& other) = default;
+	virtual ~Native() { }
+	Native& operator=(const Native& other)
+	{
+		_assert_msg_(DYNA_REC, 0, "TODO operator=");
+		return *this;
+	}
+	
+	operator Gen::X64Reg();
+};
+
+template<Type T>
+class RegisterClassBase
+{
+	friend class Any<T>;
+	friend class Native<T>;
+
+	struct PPCCachedReg
+	{
+		Gen::OpArg location;
+
+		// This register's value not in source register, ie: location !=
+		// GetDefaultLocation().
+		bool away;
+
+		// Advises the register cache that this register will be locked
+		// shortly. It still can be spilled back to memory but that may be
+		// expensive. This is a reference count.
+		int lockAdvise;
+
+		// A locked register is in use by the currently-generating opcode and cannot
+		// be spilled back to memory. This is a reference count.
+		int locked;
+	};
+
+	struct X64CachedReg
+	{
+		// If locked, this points back to the bound register or INVALID_REG if
+		// just borrowed.
+		reg_t ppcReg;
+
+		// If bound (ie: ppcReg != INVALID_REG), indicates that this
+		// register's contents are dirty and require write-back.
+		bool dirty;
+
+		// A native register is locked if it is either explictly bound to a
+		// PPC register or borrowed.
+		int locked;
+	};
+
+	// One array for GPR, one for FPU
 protected:
-	std::array<PPCCachedReg, 32> regs;
-	std::array<X64CachedReg, NUMXREGS> xregs;
+	virtual const std::vector<X64Reg>& GetAllocationOrder() const = 0;
+	virtual const std::vector<X64Reg>& GetScratchAllocationOrder() const = 0;
+	virtual void LoadRegister(X64Reg newLoc, const OpArg& location) = 0;
+	virtual void StoreRegister(const OpArg& newLoc, const OpArg& location) = 0;
+	virtual OpArg GetDefaultLocation(reg_t reg) const = 0;
+	virtual BitSet32 GetRegUtilization() const = 0;
+	virtual BitSet32 GetRegsIn(int i) const = 0;
 
-	virtual const Gen::X64Reg* GetAllocationOrder(size_t* count) = 0;
-
-	virtual BitSet32 GetRegUtilization() = 0;
-	virtual BitSet32 CountRegsIn(size_t preg, u32 lookahead) = 0;
-
-	Gen::XEmitter *emit;
-
-	float ScoreRegister(Gen::X64Reg xreg);
-
-public:
-	RegCache();
-	virtual ~RegCache() {}
-
-	void Start();
-
-	void DiscardRegContentsIfCached(size_t preg);
-	void SetEmitter(Gen::XEmitter *emitter)
-	{
-		emit = emitter;
-	}
-
-	void FlushR(Gen::X64Reg reg);
-	void FlushR(Gen::X64Reg reg, Gen::X64Reg reg2)
-	{
-		FlushR(reg);
-		FlushR(reg2);
-	}
-
-	void FlushLockX(Gen::X64Reg reg)
-	{
-		FlushR(reg);
-		LockX(reg);
-	}
-	void FlushLockX(Gen::X64Reg reg1, Gen::X64Reg reg2)
-	{
-		FlushR(reg1); FlushR(reg2);
-		LockX(reg1); LockX(reg2);
-	}
-
-	void Flush(FlushMode mode = FLUSH_ALL, BitSet32 regsToFlush = BitSet32::AllTrue(32));
-	void Flush(PPCAnalyst::CodeOp *op) { Flush(); }
-	int SanityCheck() const;
-	void KillImmediate(size_t preg, bool doLoad, bool makeDirty);
-
-	//TODO - instead of doload, use "read", "write"
-	//read only will not set dirty flag
-	void BindToRegister(size_t preg, bool doLoad = true, bool makeDirty = true);
-	void StoreFromRegister(size_t preg, FlushMode mode = FLUSH_ALL);
-	virtual void StoreRegister(size_t preg, const Gen::OpArg& newLoc) = 0;
-	virtual void LoadRegister(size_t preg, Gen::X64Reg newLoc) = 0;
-
-	const Gen::OpArg &R(size_t preg) const
-	{
-		return regs[preg].location;
-	}
-
-	Gen::X64Reg RX(size_t preg) const
-	{
-		if (IsBound(preg))
-			return regs[preg].location.GetSimpleReg();
-
-		PanicAlert("Unbound register - %zu", preg);
-		return Gen::INVALID_REG;
-	}
-	virtual Gen::OpArg GetDefaultLocation(size_t reg) const = 0;
-
-	// Register locking.
-
-	// these are powerpc reg indices
-	template<typename T>
-	void Lock(T p)
-	{
-		regs[p].locked = true;
-	}
-	template<typename T, typename... Args>
-	void Lock(T first, Args... args)
-	{
-		Lock(first);
-		Lock(args...);
-	}
-
-	// these are x64 reg indices
-	template<typename T>
-	void LockX(T x)
-	{
-		if (xregs[x].locked)
-			PanicAlert("RegCache: x %i already locked!", x);
-		xregs[x].locked = true;
-	}
-	template<typename T, typename... Args>
-	void LockX(T first, Args... args)
-	{
-		LockX(first);
-		LockX(args...);
-	}
-
-	template<typename T>
-	void UnlockX(T x)
-	{
-		if (!xregs[x].locked)
-			PanicAlert("RegCache: x %i already unlocked!", x);
-		xregs[x].locked = false;
-	}
-	template<typename T, typename... Args>
-	void UnlockX(T first, Args... args)
-	{
-		UnlockX(first);
-		UnlockX(args...);
-	}
-
-	void UnlockAll();
-	void UnlockAllX();
-
-	bool IsFreeX(size_t xreg) const
-	{
-		return xregs[xreg].free && !xregs[xreg].locked;
-	}
-
-	bool IsBound(size_t preg) const
-	{
-		return regs[preg].away && regs[preg].location.IsSimpleReg();
-	}
-
-
-	Gen::X64Reg GetFreeXReg();
+	X64Reg BindToRegister(reg_t preg, bool doLoad, bool makeDirty);
+	void CheckUnlocked();
+	BitSet32 CountRegsIn(reg_t preg, u32 lookahead);
+	void Flush();
+	X64Reg GetFreeXReg(bool scratch);
+	void Init();
 	int NumFreeRegisters();
+	void ReleaseXReg(X64Reg xr);
+	float ScoreRegister(X64Reg xr);
+	void StoreFromRegister(size_t preg, FlushMode mode);
+
+	RegisterClassBase(Gen::XEmitter* emit, JitBase* jit): m_emit(emit), m_jit(jit) {}
+	void CopyFrom(RegisterClassBase<T>& other)
+	{
+		m_regs = other.m_regs;
+		m_xregs = other.m_xregs;
+
+		// Unlock all PPC registers
+		for (auto reg : m_regs)
+		{
+			reg.locked = 0;
+		}
+
+		// Free all borrowed native registers
+		for (auto xreg : m_xregs)
+		{
+			if (xreg.ppcReg == INVALID_REG)
+			{
+				xreg.locked = 0;
+			}
+		}
+	}
+
+public:
+	// Borrows a host register. If 'which' is omitted, an appropriate one is chosen.
+	// Note that the register that is actually borrowed is indeterminate up until
+	// the actual point where a method is called that would require it to be
+	// determined. It is an error to borrow a register and never access it.
+	Native<T> Borrow(Gen::X64Reg which = Gen::INVALID_REG);
+
+	// Locks a target register for the duration of this scope. This register will
+	// no longer be implicitly moved until the end of the scope. Note that the lock
+	// is advisory until a method that requires current state of the register to be
+	// accessed is called and a register may be moved up until that point.
+	// It is an error to lock a register and never access it.
+	Any<T> Lock(size_t register);
+
+	void BindBatch(BitSet32 regs);
+	void FlushBatch(BitSet32 regs);
+
+	BitSet32 InUse() const;
+
+protected:
+	Gen::XEmitter* m_emit;
+	JitBase* m_jit;
+	std::array<PPCCachedReg, 32 + 32> m_regs;
+	std::array<X64CachedReg, NUMXREGS> m_xregs;
 };
 
-class GPRRegCache final : public RegCache
+template<Type T>
+class RegisterClass
 {
-public:
-	void StoreRegister(size_t preg, const Gen::OpArg& newLoc) override;
-	void LoadRegister(size_t preg, Gen::X64Reg newLoc) override;
-	Gen::OpArg GetDefaultLocation(size_t reg) const override;
-	const Gen::X64Reg* GetAllocationOrder(size_t* count) override;
-	void SetImmediate32(size_t preg, u32 immValue);
-	BitSet32 GetRegUtilization() override;
-	BitSet32 CountRegsIn(size_t preg, u32 lookahead) override;
 };
 
-
-class FPURegCache final : public RegCache
+template<>
+class RegisterClass<Type::FPU>: public RegisterClassBase<Type::FPU>
 {
+	friend class Registers;
+
+protected:
+	virtual const std::vector<X64Reg>& GetAllocationOrder() const { return FPU_ALLOCATION_ORDER; }
+	virtual const std::vector<X64Reg>& GetScratchAllocationOrder() const { return FPU_SCRATCH_ALLOCATION_ORDER; }
+	virtual void LoadRegister(X64Reg newLoc, const OpArg& location)
+	{
+		m_emit->MOVAPD(newLoc, location);
+	}
+	virtual void StoreRegister(const OpArg& newLoc, const OpArg& location)
+	{
+		m_emit->MOVAPD(newLoc, location.GetSimpleReg());
+	}
+	virtual OpArg GetDefaultLocation(reg_t reg) const { return PPCSTATE(ps[reg][0]); }
+	virtual BitSet32 GetRegUtilization() const { return m_jit->js.op->fprInXmm; }
+	virtual BitSet32 GetRegsIn(int i) const { return m_jit->js.op[i].fregsIn; }
+
+	RegisterClass(Gen::XEmitter* emit, JitBase* jit): RegisterClassBase(emit, jit) {}
+};
+
+template<>
+class RegisterClass<Type::GPR>: public RegisterClassBase<Type::GPR>
+{
+	friend class Registers;
+
+protected:
+	virtual const std::vector<X64Reg>& GetAllocationOrder() const { return GPR_ALLOCATION_ORDER; }
+	virtual const std::vector<X64Reg>& GetScratchAllocationOrder() const { return GPR_SCRATCH_ALLOCATION_ORDER; }
+	virtual void LoadRegister(X64Reg newLoc, const OpArg& location)
+	{
+		m_emit->MOV(32, R(newLoc), location);
+	}
+	virtual void StoreRegister(const OpArg& newLoc, const OpArg& location)
+	{
+		m_emit->MOV(32, newLoc, location);
+	}
+	virtual OpArg GetDefaultLocation(reg_t reg) const { return PPCSTATE(gpr[reg]); }
+	virtual BitSet32 GetRegUtilization() const { return m_jit->js.op->gprInReg; }
+	virtual BitSet32 GetRegsIn(int i) const { return m_jit->js.op[i].regsIn; };
+
+	RegisterClass(Gen::XEmitter* emit, JitBase* jit): RegisterClassBase(emit, jit) {}
+
 public:
-	void StoreRegister(size_t preg, const Gen::OpArg& newLoc) override;
-	void LoadRegister(size_t preg, Gen::X64Reg newLoc) override;
-	const Gen::X64Reg* GetAllocationOrder(size_t* count) override;
-	Gen::OpArg GetDefaultLocation(size_t reg) const override;
-	BitSet32 GetRegUtilization() override;
-	BitSet32 CountRegsIn(size_t preg, u32 lookahead) override;
+	// A virtual register that contains zero and cannot be updated
+	Any<Type::GPR> Zero() { return Imm32(0); }
+
+	// A virtual register that contains an immediate and cannot be updated
+	Any<Type::GPR> Imm32(u32 immediate);
+};
+
+using GPRRegisters = RegisterClass<Type::GPR>;
+using FPURegisters = RegisterClass<Type::FPU>;
+
+using GPRRegister = Any<Type::GPR>;
+using GPRNative = Native<Type::GPR>;
+using FPURegister = Any<Type::FPU>;
+using FPUNative = Native<Type::FPU>;
+
+class Registers
+{
+	template<Type T>
+	friend class Any;
+	template<Type T>
+	friend class RegisterClass;
+	template<Type T>
+	friend class RegisterClassBase;
+
+public:
+	void Init();
+
+	Registers(Gen::XEmitter* emit, JitBase* jit): m_emit(emit), m_jit(jit) {}
+
+	// Create an independent copy of the register cache state for a branch
+	Registers Branch();
+
+	int SanityCheck() const;
+
+	void Flush() { gpr.Flush(); fpu.Flush(); }
+
+	void Commit();
+	void Rollback();
+
+private:
+	Gen::XEmitter* m_emit;
+	JitBase* m_jit;
+
+public:
+	FPURegisters fpu{m_emit, m_jit};
+	GPRRegisters gpr{m_emit, m_jit};
+};
+
 };
