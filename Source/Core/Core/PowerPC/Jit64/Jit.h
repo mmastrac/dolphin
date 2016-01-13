@@ -29,6 +29,7 @@
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/PowerPC/PPCAnalyst.h"
 #include "Core/PowerPC/PPCTables.h"
+#include "Core/PowerPC/Jit64/Jit64_Registers.h"
 #include "Core/PowerPC/Jit64/JitAsm.h"
 #include "Core/PowerPC/Jit64/JitRegCache.h"
 #include "Core/PowerPC/JitCommon/Jit_Util.h"
@@ -41,8 +42,7 @@ private:
 	void AllocStack();
 	void FreeStack();
 
-	GPRRegCache gpr;
-	FPURegCache fpr;
+	Jit64Reg::Registers regs;
 
 	// The default code buffer. We keep it around to not have to alloc/dealloc a
 	// large chunk of memory for each recompiled block.
@@ -54,7 +54,7 @@ private:
 	u8* m_stack;
 
 public:
-	Jit64() : code_buffer(32000) {}
+	Jit64() : regs(this), code_buffer(32000) {}
 	~Jit64() {}
 
 	void Init() override;
@@ -134,21 +134,26 @@ public:
 	Gen::FixupBranch JumpIfCRFieldBit(int field, int bit, bool jump_if_set = true);
 	void SetFPRFIfNeeded(Gen::X64Reg xmm);
 
-	void HandleNaNs(UGeckoInstruction inst, Gen::X64Reg xmm_out, Gen::X64Reg xmm_in,
-	                Gen::X64Reg clobber = Gen::XMM0);
+	void HandleNaNs(UGeckoInstruction inst, Gen::X64Reg xmm_out, Gen::X64Reg xmm_in);
 
-	void MultiplyImmediate(u32 imm, int a, int d, bool overflow);
+	void MultiplyImmediate(u32 imm, Jit64Reg::Any& ra, Jit64Reg::Native& xd, bool overflow);
 
 	typedef u32 (*Operation)(u32 a, u32 b);
 	void regimmop(int d, int a, bool binary, u32 value, Operation doop,
 	              void (Gen::XEmitter::*op)(int, const Gen::OpArg&, const Gen::OpArg&),
 	              bool Rc = false, bool carry = false);
-	Gen::X64Reg fp_tri_op(int d, int a, int b, bool reversible, bool single,
+	Gen::X64Reg fp_tri_op(Gen::X64Reg xd, int d, int a, int b, bool reversible, bool single,
 	                      void (Gen::XEmitter::*avxOp)(Gen::X64Reg, Gen::X64Reg, const Gen::OpArg&),
 	                      void (Gen::XEmitter::*sseOp)(Gen::X64Reg, const Gen::OpArg&),
 	                      bool packed, bool preserve_inputs, bool roundRHS = false);
 	void FloatCompare(UGeckoInstruction inst, bool upper = false);
 	void UpdateMXCSR();
+
+	void SafeLoad(Jit64Reg::Any& reg_value, Jit64Reg::Any& reg_addr, Jit64Reg::Any& offset, int accessSize, bool signExtend, bool update);
+	void SafeLoadSwap(Jit64Reg::Any& reg_value, Jit64Reg::Any& reg_addr, Jit64Reg::Any& offset, int accessSize, bool signExtend, bool update);
+
+	void SafeWrite(Jit64Reg::Any& reg_value, Jit64Reg::Any& reg_addr, Jit64Reg::Any& offset, int accessSize, bool update);
+	void SafeWriteSwap(Jit64Reg::Any& reg_value, Jit64Reg::Any& reg_addr, Jit64Reg::Any& offset, int accessSize, bool update);
 
 	// OPCODES
 	using Instruction = void (Jit64::*)(UGeckoInstruction instCode);

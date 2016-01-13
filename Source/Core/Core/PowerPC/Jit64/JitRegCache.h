@@ -122,6 +122,17 @@ public:
 		Lock(first);
 		Lock(args...);
 	}
+    template<typename T>
+    void Unlock(T p)
+    {
+        regs[p].locked = false;
+    }
+    template<typename T, typename... Args>
+    void Unlock(T first, Args... args)
+    {
+        Unlock(first);
+        Unlock(args...);
+    }
 
 	// these are x64 reg indices
 	template<typename T>
