@@ -273,8 +273,8 @@ void Jit64::mfspr(UGeckoInstruction inst)
 		// redundant for the JIT.
 		// no register choice
 
-		auto rdx = regs.BorrowGPR(RDX);
-		auto rax = regs.BorrowGPR(RAX);
+		auto rdx = regs.gpr.Borrow(RDX);
+		auto rax = regs.gpr.Borrow(RAX);
 
 		// An inline implementation of CoreTiming::GetFakeTimeBase, since in timer-heavy games the
 		// cost of calling out to C for this is actually significant.
@@ -417,7 +417,7 @@ void Jit64::mfcr(UGeckoInstruction inst)
 	JITDISABLE(bJITSystemRegistersOff);
 	int d = inst.RD;
 	auto rd = regs.LockGPR(d);
-	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
+	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
 	CALL(asm_routines.mfcr);
 	auto xd = rd.Bind(Jit64Reg::Write);
 	MOV(32, xd, R(RSCRATCH));

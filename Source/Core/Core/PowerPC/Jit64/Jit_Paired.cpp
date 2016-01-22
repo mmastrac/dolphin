@@ -45,7 +45,7 @@ void Jit64::ps_sum(UGeckoInstruction inst)
 	auto rc = regs.fpu.Lock(c);
 
 	auto xd = rd.Bind(d == b || d == c ? Jit64Reg::ReadWrite : Jit64Reg::Write);
-	auto tmp = regs.BorrowFPU();
+	auto tmp = regs.fpu.Borrow();
 	MOVDDUP(tmp, ra);   // {a.ps0, a.ps0}
 	ADDPD(tmp, rb); // {a.ps0 + b.ps0, a.ps0 + b.ps1}
 	switch (inst.SUBOP5)
@@ -63,7 +63,7 @@ void Jit64::ps_sum(UGeckoInstruction inst)
 			}
 			else
 			{
-				auto tmp2 = regs.BorrowFPU();
+				auto tmp2 = regs.fpu.Borrow();
 				MOVAPD((X64Reg)tmp2, xc);
 				SHUFPD(tmp2, tmp, 2);
 				// tmp can get released here
@@ -160,11 +160,11 @@ void Jit64::ps_rsqrte(UGeckoInstruction inst)
 	int d = inst.FD;
 	auto rd = regs.fpu.Lock(d);
 	auto rb = regs.fpu.Lock(b);
-	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
+	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
 	
 	auto xb = rb.Bind(Jit64Reg::Read);
 	auto xd = rd.Bind(Jit64Reg::Write);
-	auto tmp = regs.BorrowFPU(XMM0);
+	auto tmp = regs.fpu.Borrow(XMM0);
 
 	MOVSD((X64Reg)tmp, xb);
 	CALL(asm_routines.frsqrte);
@@ -187,11 +187,11 @@ void Jit64::ps_res(UGeckoInstruction inst)
 	int d = inst.FD;
 	auto rd = regs.fpu.Lock(d);
 	auto rb = regs.fpu.Lock(b);
-	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
+	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
 
 	auto xb = rb.Bind(Jit64Reg::Read);
 	auto xd = rd.Bind(Jit64Reg::Write);
-	auto tmp = regs.BorrowFPU(XMM0);
+	auto tmp = regs.fpu.Borrow(XMM0);
 
 	MOVSD((X64Reg)tmp, xb);
 	CALL(asm_routines.fres);

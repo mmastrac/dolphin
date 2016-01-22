@@ -40,7 +40,7 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
 	auto rb = regs.LockGPR(b);
 	auto rs = regs.fpu.Lock(s);
 
-	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
+	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
 
 	MOV_sum(32, scratch_extra, ra, indexed ? rb : Imm32((u32)offset));
 
@@ -66,7 +66,7 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
 		}
 		else
 		{
-			auto scratch2 = regs.BorrowGPR(RSCRATCH2);
+			auto scratch2 = regs.gpr.Borrow(RSCRATCH2);
 
 			// We know what GQR is here, so we can load RSCRATCH2 and call into the store method directly
 			// with just the scale bits.
@@ -80,8 +80,8 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
 	}
 	else
 	{
-		auto scratch = regs.BorrowGPR();
-		auto scratch2 = regs.BorrowGPR(RSCRATCH2);
+		auto scratch = regs.gpr.Borrow();
+		auto scratch2 = regs.gpr.Borrow(RSCRATCH2);
 
 		// Some games (e.g. Dirt 2) incorrectly set the unused bits which breaks the lookup table code.
 		// Hence, we need to mask out the unused bits. The layout of the GQR register is
@@ -120,7 +120,7 @@ void Jit64::psq_lXX(UGeckoInstruction inst)
 	auto ra = regs.LockGPR(a);
 	auto rb = regs.LockGPR(b);
 
-	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
+	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
 
 	MOV_sum(32, scratch_extra, ra, indexed ? rb : Imm32((u32)offset));
 
@@ -133,8 +133,8 @@ void Jit64::psq_lXX(UGeckoInstruction inst)
 	}
 	else
 	{
-		auto scratch = regs.BorrowGPR();
-		auto scratch2 = regs.BorrowGPR(RSCRATCH2);
+		auto scratch = regs.gpr.Borrow();
+		auto scratch2 = regs.gpr.Borrow(RSCRATCH2);
 
 		MOV(32, scratch2, Imm32(0x3F07));
 

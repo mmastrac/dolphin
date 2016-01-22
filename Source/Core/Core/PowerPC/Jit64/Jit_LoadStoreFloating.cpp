@@ -27,7 +27,7 @@ void Jit64::lfXXX(UGeckoInstruction inst)
 	int a = inst.RA;
 	int b = inst.RB;
 
-	auto scratch = regs.BorrowGPR();
+	auto scratch = regs.gpr.Borrow();
 
 	auto ra = a ? regs.LockGPR(a) : regs.Zero();
 	auto rb = indexed ? regs.LockGPR(b) : regs.Imm32((u32)(s32)(s16)inst.SIMM_16);
@@ -61,7 +61,7 @@ void Jit64::stfXXX(UGeckoInstruction inst)
 	int b = inst.RB;
 	int accessSize = single ? 32 : 64;
 
-	auto scratch = regs.BorrowGPR();
+	auto scratch = regs.gpr.Borrow();
 
 	auto ra = a ? regs.LockGPR(a) : regs.Zero();
 	auto rb = indexed ? regs.LockGPR(b) : regs.Imm32((u32)(s32)(s16)inst.SIMM_16);

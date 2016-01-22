@@ -517,7 +517,7 @@ void Jit64::cmpXX(UGeckoInstruction inst)
 	}
 	else
 	{
-		auto scratch = regs.BorrowGPR();
+		auto scratch = regs.gpr.Borrow();
 		X64Reg input = scratch;
 		if (signedCompare)
 		{
@@ -557,7 +557,7 @@ void Jit64::cmpXX(UGeckoInstruction inst)
 				{
 					// CAUTION: This bind doesn't technically live long enough, but the code won't flush this
 					// Needs a rework
-					auto scratch2 = regs.BorrowGPR();
+					auto scratch2 = regs.gpr.Borrow();
 					MOV(32, scratch2, comparand);
 					comparand = scratch2;
 				}
@@ -693,7 +693,7 @@ void Jit64::boolX(UGeckoInstruction inst)
 			}
 			else
 			{
-				auto scratch = regs.BorrowGPR();
+				auto scratch = regs.gpr.Borrow();
 				MOV(32, scratch, operand);
 				NOT(32, scratch);
 				AND(32, ra, scratch);
@@ -718,7 +718,7 @@ void Jit64::boolX(UGeckoInstruction inst)
 			}
 			else
 			{
-				auto scratch = regs.BorrowGPR();
+				auto scratch = regs.gpr.Borrow();
 				MOV(32, scratch, operand);
 				NOT(32, scratch);
 				OR(32, ra, scratch);
@@ -895,7 +895,7 @@ void Jit64::subfx(UGeckoInstruction inst)
 	else
 	{
 		auto xd = rd.Bind((d == a || d == b) ? Jit64Reg::ReadWrite : Jit64Reg::Write);
-		auto scratch = regs.BorrowGPR();
+		auto scratch = regs.gpr.Borrow();
 		if (d == b)
 		{
 			SUB(32, xd, ra);
@@ -1065,8 +1065,8 @@ void Jit64::mulhwXx(UGeckoInstruction inst)
 	else if (sign)
 	{
 		// no register choice
-		auto eax = regs.BorrowGPR(EAX);
-		auto edx = regs.BorrowGPR(EDX);
+		auto eax = regs.gpr.Borrow(EAX);
+		auto edx = regs.gpr.Borrow(EDX);
 
 		auto xd = rd.Bind(d == a || d == b ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 		MOV(32, eax, ra);
@@ -1180,8 +1180,8 @@ void Jit64::divwux(UGeckoInstruction inst)
 	else
 	{
 		// no register choice (do we need to do this?)
-		auto eax = regs.BorrowGPR(EAX);
-		auto edx = regs.BorrowGPR(EDX);
+		auto eax = regs.gpr.Borrow(EAX);
+		auto edx = regs.gpr.Borrow(EDX);
 
 		auto xd = rd.Bind(d == a || d == b ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 		MOV(32, eax, ra);
@@ -1237,8 +1237,8 @@ void Jit64::divwx(UGeckoInstruction inst)
 	else
 	{
 		// no register choice
-		auto eax = regs.BorrowGPR(EAX);
-		auto edx = regs.BorrowGPR(EDX);
+		auto eax = regs.gpr.Borrow(EAX);
+		auto edx = regs.gpr.Borrow(EDX);
 		auto xd = rd.Bind(d == a || d == b ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 		MOV(32, eax, ra);
 		CDQ();
@@ -1636,7 +1636,7 @@ void Jit64::rlwnmx(UGeckoInstruction inst)
 	else
 	{
 		// no register choice
-		auto ecx = regs.BorrowGPR(ECX);
+		auto ecx = regs.gpr.Borrow(ECX);
 		MOV(32, R(ECX), rb);
 		auto xa = ra.Bind(a == s ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 		if (a != s)
@@ -1701,7 +1701,7 @@ void Jit64::srwx(UGeckoInstruction inst)
 	else
 	{
 		// no register choice
-		auto ecx = regs.BorrowGPR(ECX);
+		auto ecx = regs.gpr.Borrow(ECX);
 		MOV(32, ecx, rb);
 		auto xa = ra.Bind(a == s ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 		if (a != s)
@@ -1736,7 +1736,7 @@ void Jit64::slwx(UGeckoInstruction inst)
 	else
 	{
 		// no register choice
-		auto ecx = regs.BorrowGPR(ECX);
+		auto ecx = regs.gpr.Borrow(ECX);
 		MOV(32, ecx, rb);
 		auto xa = ra.Bind(a == s ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 		if (a != s)
@@ -1766,8 +1766,8 @@ void Jit64::srawx(UGeckoInstruction inst)
 	auto rb = regs.LockGPR(b);
 	auto rs = regs.LockGPR(s);
 
-	auto ecx = regs.BorrowGPR(ECX);
-	auto scratch = regs.BorrowGPR();
+	auto ecx = regs.gpr.Borrow(ECX);
+	auto scratch = regs.gpr.Borrow();
 	auto xa = ra.Bind(a == s || a == b ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 	MOV(32, ecx, rb);
 	if (a != s)

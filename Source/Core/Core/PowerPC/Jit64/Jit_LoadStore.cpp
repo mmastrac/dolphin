@@ -173,9 +173,9 @@ void Jit64::dcbx(UGeckoInstruction inst)
 	INSTRUCTION_START
 	JITDISABLE(bJITLoadStoreOff);
 
-	auto addr = regs.BorrowGPR();
-	auto value = regs.BorrowGPR();
-	auto tmp = regs.BorrowGPR();
+	auto addr = regs.gpr.Borrow();
+	auto value = regs.gpr.Borrow();
+	auto tmp = regs.gpr.Borrow();
 
 	auto ra = inst.RA ? regs.LockGPR(inst.RA) : regs.Zero();
 	auto rb = regs.LockGPR(inst.RB);
@@ -258,7 +258,7 @@ void Jit64::dcbz(UGeckoInstruction inst)
 
 	auto ra = regs.LockGPR(a);
 	auto rb = regs.LockGPR(b);
-	auto scratch = regs.BorrowGPR();
+	auto scratch = regs.gpr.Borrow();
 
 	u32 mem_mask = Memory::ADDR_MASK_HW_ACCESS;
 

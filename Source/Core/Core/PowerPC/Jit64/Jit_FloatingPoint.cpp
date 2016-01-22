@@ -104,7 +104,7 @@ void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm)
 	}
 	else
 	{
-		auto clobber = regs.BorrowFPU();
+		auto clobber = regs.fpu.Borrow();
 		
 		// paired-single
 		std::reverse(inputs.begin(), inputs.end());
@@ -129,7 +129,7 @@ void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm)
 		else
 		{
 			// SSE2 fallback
-			auto tmp = regs.BorrowFPU();
+			auto tmp = regs.fpu.Borrow();
 			MOVAPD(clobber, R(xmm));
 			CMPPD(clobber, R(clobber), CMP_UNORD);
 			MOVMSKPD(RSCRATCH, R(clobber));
@@ -641,7 +641,7 @@ void Jit64::frsqrtex(UGeckoInstruction inst)
 	int d = inst.FD;
 
 	auto rb = regs.fpu.Lock(b), rd = regs.fpu.Lock(d);
-	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
+	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
 	MOVAPD(XMM0, rb);
 	CALL(asm_routines.frsqrte);
 	auto xd = rd.Bind(Jit64Reg::Write);
@@ -658,7 +658,7 @@ void Jit64::fresx(UGeckoInstruction inst)
 	int d = inst.FD;
 
 	auto rb = regs.fpu.Lock(b), rd = regs.fpu.Lock(d);
-	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
+	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
 	MOVAPD(XMM0, rb);
 	CALL(asm_routines.fres);
 	auto xd = rd.Bind(Jit64Reg::Write);
