@@ -14,14 +14,6 @@ static const int NUMXREGS = 16;
 
 using namespace Gen;
 
-// Forward
-class Registers;
-class PPC;
-class Native;
-class Any;
-class Tx;
-class Imm;
-
 typedef size_t reg_t;
 
 enum BindMode
@@ -72,10 +64,22 @@ static const std::array<X64Reg, 14> FPU_ALLOCATION_ORDER =
 	XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, XMM2, XMM3, XMM4, XMM5
 }};
 
+
+// Forward
+class Registers;
+class PPC;
+class Tx;
+class Imm;
+template <Type T>
+class Native;
+template <Type T>
+class Any;
+
+template <Type T>
 class Any
 {
 	friend class Registers;
-	friend class Native;
+	friend class Native<T>;
 
 protected:
 	Registers* m_reg;
@@ -130,7 +134,7 @@ public:
 	void AddTransactionally(u32 value, bool condition = true) { return AddTransactionally(Gen::Imm32(value), condition); }
 	
 	// Forces this register into a native register
-	Native Bind(BindMode mode);
+	Native<T> Bind(BindMode mode);
 
 	// Any register, bound or not, can be used as an OpArg. If not bound, this will return
 	// a pointer into PPCSTATE.
@@ -140,20 +144,21 @@ public:
 };
 
 // A register (PPC or immediate) that has been bound to a native 
-class Native final : public Any
+template <Type T>
+class Native final : public Any<T>
 {
 	friend class Registers;
-	friend class Any;
+	friend class Any<T>;
 
 private:
 	Gen::X64Reg m_xreg;
 
-	Native(Registers* reg, Gen::X64Reg xreg): Any(reg, X64, xreg), m_xreg(xreg) {}
+	Native(Registers* reg, Gen::X64Reg xreg): Any<T>(reg, X64, xreg), m_xreg(xreg) {}
 
 public:
-	Native(const Native& other): Any(other) {}
-	Native(Native&& other): Any(other) {}
-	~Native() { Unlock(); }
+	Native(const Native& other): Any<T>(other) {}
+	Native(Native&& other): Any<T>(other) {}
+	~Native();// { Unlock(); }
     Native& operator=(const Native& other) = default;
 	operator Gen::X64Reg() const;
 };
@@ -166,11 +171,11 @@ protected:
 
 public:
 	// Borrows a host register. If which is omitted, an appropriate one is chosen.
-	Native Borrow(Gen::X64Reg which = Gen::INVALID_REG);
+	Native<T> Borrow(Gen::X64Reg which = Gen::INVALID_REG);
 
 	// Locks a target register for the duration of this scope. This register will
 	// not be moved from its current location unless it is explicitly bound.
-	Any Lock(size_t register);
+	Any<T> Lock(size_t register);
 
 	void BindBatch(BitSet32 regs);
 	void FlushBatch(BitSet32 regs);
@@ -202,10 +207,10 @@ protected:
 
 public:
 	// A virtual register that contains zero and cannot be updated
-	Any Zero() { return Imm32(0); }
+	Any<GPR> Zero() { return Imm32(0); }
 
 	// A virtual register that contains an immediate and cannot be updated
-	Any Imm32(u32 immediate);
+	Any<GPR> Imm32(u32 immediate);
 };
 
 typedef RegisterClass<GPR, 11> GPRRegisters;
@@ -213,6 +218,7 @@ typedef RegisterClass<GPR, 11> GPRRegisters;
 
 class Registers
 {
+	template<Type T>
 	friend class Any;
 	template<Type T, std::size_t SIZE>
 	friend class RegisterClass;

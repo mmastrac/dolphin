@@ -71,9 +71,9 @@ void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm)
 		return;
 	}
 
-	std::vector<Jit64Reg::Any*> inputs;
 	u32 a = inst.FA, b = inst.FB, c = inst.FC;
 	auto ra = regs.fpu.Lock(a), rb = regs.fpu.Lock(b), rc = regs.fpu.Lock(c);
+	std::vector<decltype(ra)> inputs;
 	for (auto r : {&ra, &rb, &rc})
 	{
 		if (!js.op->fregsIn[r->Register()])

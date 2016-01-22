@@ -3,7 +3,6 @@
 // Refer to the license.txt file included.
 
 #include "Core/PowerPC/Jit64/Jit.h"
-#include "Core/PowerPC/Jit64/Jit64_Registers.h"
 
 using namespace Gen;
 
@@ -34,41 +33,41 @@ int Registers::SanityCheck() const
 	return 0;
 }
 
-BitSet32 Registers::InUse(Type type) const
-{
-	// for (int i = 0; i < NUMXREGS; i++)
-	// {
-	// 	if (!gpr.IsFreeX(i))
-	// 		result[i] = true;
-	// 	if (!fpr.IsFreeX(i))
-	// 		result[16 + i] = true;
-	// }
-	// return result & ABI_ALL_CALLER_SAVED;
-	return (BitSet32)0;
-}
+// BitSet32 Registers::InUse(Type type) const
+// {
+// 	// for (int i = 0; i < NUMXREGS; i++)
+// 	// {
+// 	// 	if (!gpr.IsFreeX(i))
+// 	// 		result[i] = true;
+// 	// 	if (!fpr.IsFreeX(i))
+// 	// 		result[16 + i] = true;
+// 	// }
+// 	// return result & ABI_ALL_CALLER_SAVED;
+// 	return (BitSet32)0;
+// }
 
-int Registers::NumFreeRegisters()
-{
-	// int count = 0;
-	// size_t aCount;
-	// const X64Reg* aOrder = GetAllocationOrder(&aCount);
-	// for (size_t i = 0; i < aCount; i++)
-	// 	if (!xregs[aOrder[i]].locked && xregs[aOrder[i]].free)
-	// 		count++;
-	// return count;
-	return 0;
-}
+// int Registers::NumFreeRegisters()
+// {
+// 	// int count = 0;
+// 	// size_t aCount;
+// 	// const X64Reg* aOrder = GetAllocationOrder(&aCount);
+// 	// for (size_t i = 0; i < aCount; i++)
+// 	// 	if (!xregs[aOrder[i]].locked && xregs[aOrder[i]].free)
+// 	// 		count++;
+// 	// return count;
+// 	return 0;
+// }
 
-void Registers::BindBatch(Type type, BitSet32 regs)
-{
-	for (int reg : regs)
-	{
-		// if (NumFreeRegisters() < 2)
-		// 	break;
-		// if (ops[i].gprInReg[reg] && !gpr.R(reg).IsImm())
-		// 	gpr.BindToRegister(reg, true, false);
-	}
-}
+// void Registers::BindBatch(Type type, BitSet32 regs)
+// {
+// 	for (int reg : regs)
+// 	{
+// 		// if (NumFreeRegisters() < 2)
+// 		// 	break;
+// 		// if (ops[i].gprInReg[reg] && !gpr.R(reg).IsImm())
+// 		// 	gpr.BindToRegister(reg, true, false);
+// 	}
+// }
 
 OpArg Registers::GetDefaultLocation(Type type, reg_t reg) const
 {
@@ -111,78 +110,78 @@ BitSet32 Registers::CountRegsIn(Type type, reg_t preg, u32 lookahead)
 	return regsUsed;
 }
 
-void Registers::StoreFromRegister(Type type, size_t preg, FlushMode mode)
-{
-	auto& ppc = m_regs[type][preg];
+// void Registers::StoreFromRegister(Type type, size_t preg, FlushMode mode)
+// {
+// 	auto& ppc = m_regs[type][preg];
 
-	if (ppc.away)
-	{
-		bool doStore;
-		if (ppc.location.IsSimpleReg())
-		{
-			X64Reg xr = RX(type, preg);
-			auto& xreg = m_xregs[type][xr];
-			doStore = xreg.dirty;
-			if (mode == FLUSH_ALL)
-			{
-				xreg.lock = Free;
-				xreg.ppcReg = INVALID_REG;
-				xreg.dirty = false;
-			}
-		}
-		else
-		{
-			//must be immediate - do nothing
-			doStore = true;
-		}
-		OpArg newLoc = GetDefaultLocation(type, preg);
-		if (doStore)
-			StoreRegister(type, preg, newLoc);
-		if (mode == FLUSH_ALL)
-		{
-			ppc.location = newLoc;
-			ppc.away = false;
-		}
-	}
-}
+// 	if (ppc.away)
+// 	{
+// 		bool doStore;
+// 		if (ppc.location.IsSimpleReg())
+// 		{
+// 			X64Reg xr = RX(type, preg);
+// 			auto& xreg = m_xregs[type][xr];
+// 			doStore = xreg.dirty;
+// 			if (mode == FLUSH_ALL)
+// 			{
+// 				xreg.lock = Free;
+// 				xreg.ppcReg = INVALID_REG;
+// 				xreg.dirty = false;
+// 			}
+// 		}
+// 		else
+// 		{
+// 			//must be immediate - do nothing
+// 			doStore = true;
+// 		}
+// 		OpArg newLoc = GetDefaultLocation(type, preg);
+// 		if (doStore)
+// 			StoreRegister(type, preg, newLoc);
+// 		if (mode == FLUSH_ALL)
+// 		{
+// 			ppc.location = newLoc;
+// 			ppc.away = false;
+// 		}
+// 	}
+// }
 
-void Registers::BindToRegister(Type type, reg_t preg, bool doLoad, bool makeDirty)
-{
-	auto& ppc = m_regs[type][preg];
+// void Registers::BindToRegister(Type type, reg_t preg, bool doLoad, bool makeDirty)
+// {
+// 	auto& ppc = m_regs[type][preg];
 
-	if (!ppc.away && ppc.location.IsImm())
-		PanicAlert("Bad immediate");
+// 	if (!ppc.away && ppc.location.IsImm())
+// 		PanicAlert("Bad immediate");
 
-	if (!ppc.away || (ppc.away && ppc.location.IsImm()))
-	{
-		X64Reg xr = GetFreeXReg(type);
-		auto& xreg = m_xregs[type][xr];
+// 	if (!ppc.away || (ppc.away && ppc.location.IsImm()))
+// 	{
+// 		X64Reg xr = GetFreeXReg(type);
+// 		auto& xreg = m_xregs[type][xr];
 
-		// Sanity check
-		_assert_msg_(DYNA_REC, !xreg.dirty, "Xreg already dirty");
-		_assert_msg_(DYNA_REC, xreg.lock != Borrowed, "GetFreeXReg returned borrowed register");
-		for (PPCCachedReg& reg : m_regs[type])
-			if (reg.location.IsSimpleReg(xr))
-				Crash();
+// 		// Sanity check
+// 		_assert_msg_(DYNA_REC, !xreg.dirty, "Xreg already dirty");
+// 		_assert_msg_(DYNA_REC, xreg.lock != Borrowed, "GetFreeXReg returned borrowed register");
+// 		for (PPCCachedReg& reg : m_regs[type])
+// 			if (reg.location.IsSimpleReg(xr))
+// 				Crash();
 
-		xreg.lock = Bound;
-		xreg.ppcReg = preg;
-		xreg.dirty = makeDirty || ppc.location.IsImm();
-		if (doLoad)
-			LoadRegister(type, preg, xr);
+// 		xreg.lock = Bound;
+// 		xreg.ppcReg = preg;
+// 		xreg.dirty = makeDirty || ppc.location.IsImm();
+// 		if (doLoad)
+// 			LoadRegister(type, preg, xr);
 
-		ppc.away = true;
-		ppc.location = R(xr);
-	}
-	else
-	{
-		// reg location must be simplereg; memory locations
-		// and immediates are taken care of above.
-		m_xregs[type][RX(type, preg)].dirty |= makeDirty;
-	}
+// 		ppc.away = true;
+// 		ppc.location = R(xr);
+// 	}
+// 	else
+// 	{
+// 		// reg location must be simplereg; memory locations
+// 		// and immediates are taken care of above.
+// 		m_xregs[type][RX(type, preg)].dirty |= makeDirty;
+// 	}
 
-	_assert_msg_(DYNA_REC, m_xregs[type][RX(type, preg)].lock == Borrowed, "This reg should have been flushed");
-}
+// 	_assert_msg_(DYNA_REC, m_xregs[type][RX(type, preg)].lock == Borrowed, "This reg should have been flushed");
+// }
 
 // Estimate roughly how bad it would be to de-allocate this register. Higher score
 // means more bad.
@@ -216,84 +215,84 @@ float Registers::ScoreRegister(Type type, X64Reg xr)
 	return score;
 }
 
-X64Reg Registers::GetFreeXReg(Type type)
-{
-	if (type == GPR)
-		return GetFreeXReg(type, GPR_ALLOCATION_ORDER);
-	return GetFreeXReg(type, FPU_ALLOCATION_ORDER);
-}
+// X64Reg Registers::GetFreeXReg(Type type)
+// {
+// 	if (type == GPR)
+// 		return GetFreeXReg(type, GPR_ALLOCATION_ORDER);
+// 	return GetFreeXReg(type, FPU_ALLOCATION_ORDER);
+// }
 
-template <std::size_t SIZE>
-X64Reg Registers::GetFreeXReg(Type type, std::array<X64Reg, SIZE> order)
-{
-	auto& xregs = m_xregs[type];
-	auto& regs = m_regs[type];
+// template <std::size_t SIZE>
+// X64Reg Registers::GetFreeXReg(Type type, std::array<X64Reg, SIZE> order)
+// {
+// 	auto& xregs = m_xregs[type];
+// 	auto& regs = m_regs[type];
 
-	// Are there any X64 registers of this type that are currently unlocked 
-	// (ie: not borrowed) and free (ie: not bound)?
-	for (X64Reg xr : order)
-		if (xregs[xr].lock == Free)
-			return xr;
+// 	// Are there any X64 registers of this type that are currently unlocked 
+// 	// (ie: not borrowed) and free (ie: not bound)?
+// 	for (X64Reg xr : order)
+// 		if (xregs[xr].lock == Free)
+// 			return xr;
 
-	// Okay, not found; run the register allocator heuristic and figure out which register we should
-	// clobber.
-	float min_score = std::numeric_limits<float>::max();
-	X64Reg best_xreg = INVALID_REG;
-	size_t best_preg = 0;
-	for (X64Reg xreg : order)
-	{
-		// Borrowed X64 regs aren't available
-		if (xregs[xreg].lock == Borrowed)
-			continue;
+// 	// Okay, not found; run the register allocator heuristic and figure out which register we should
+// 	// clobber.
+// 	float min_score = std::numeric_limits<float>::max();
+// 	X64Reg best_xreg = INVALID_REG;
+// 	size_t best_preg = 0;
+// 	for (X64Reg xreg : order)
+// 	{
+// 		// Borrowed X64 regs aren't available
+// 		if (xregs[xreg].lock == Borrowed)
+// 			continue;
 
-		// Must be bound
-		size_t preg = xregs[xreg].ppcReg;
-		if (regs[preg].locked)
-			continue;
+// 		// Must be bound
+// 		size_t preg = xregs[xreg].ppcReg;
+// 		if (regs[preg].locked)
+// 			continue;
 
-		float score = ScoreRegister(type, xreg);
-		if (score < min_score)
-		{
-			min_score = score;
-			best_xreg = xreg;
-			best_preg = preg;
-		}
-	}
+// 		float score = ScoreRegister(type, xreg);
+// 		if (score < min_score)
+// 		{
+// 			min_score = score;
+// 			best_xreg = xreg;
+// 			best_preg = preg;
+// 		}
+// 	}
 
-	if (best_xreg != INVALID_REG)
-	{
-		StoreFromRegister(type, best_preg, FLUSH_ALL);
-		return best_xreg;
-	}
+// 	if (best_xreg != INVALID_REG)
+// 	{
+// 		StoreFromRegister(type, best_preg, FLUSH_ALL);
+// 		return best_xreg;
+// 	}
 
-	//Still no dice? Die!
-	_assert_msg_(DYNA_REC, 0, "Regcache ran out of regs");
-	return INVALID_REG;
-}
+// 	//Still no dice? Die!
+// 	_assert_msg_(DYNA_REC, 0, "Regcache ran out of regs");
+// 	return INVALID_REG;
+// }
 
-Any Registers::Lock(Type type, size_t reg)
-{
-	_assert_msg_(DYNA_REC, type == GPR || type == FPU, "Invalid type, expect a crash soon");
-	m_regs[type][reg].locked = true;
-	return Any(this, type, reg);
-}
+// Any Registers::Lock(Type type, size_t reg)
+// {
+// 	_assert_msg_(DYNA_REC, type == GPR || type == FPU, "Invalid type, expect a crash soon");
+// 	m_regs[type][reg].locked = true;
+// 	return Any(this, type, reg);
+// }
 
-Any Registers::Imm32(u32 value)
-{
-	return Any(this, Imm, value);
-}
+// Any Registers::Imm32(u32 value)
+// {
+// 	return Any(this, Imm, value);
+// }
 
-Native Registers::Borrow(Type type, X64Reg reg)
-{
-	printf("borrow %d\n", reg);
-	if (type == GPR && reg == RSCRATCH_EXTRA)
-	{
-		// todo
-		// m_gpr->FlushLockX(RSCRATCH_EXTRA);
-	}
+// Native Registers::Borrow(Type type, X64Reg reg)
+// {
+// 	printf("borrow %d\n", reg);
+// 	if (type == GPR && reg == RSCRATCH_EXTRA)
+// 	{
+// 		// todo
+// 		// m_gpr->FlushLockX(RSCRATCH_EXTRA);
+// 	}
 
-	return Native(this, reg);
-}
+// 	return Native(this, reg);
+// }
 
 
 Native::operator X64Reg() const

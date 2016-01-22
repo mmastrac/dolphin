@@ -135,7 +135,7 @@ public:
 
 	void HandleNaNs(UGeckoInstruction inst, Gen::X64Reg xmm_out, Gen::X64Reg xmm_in);
 
-	void MultiplyImmediate(u32 imm, Jit64Reg::Any& ra, Jit64Reg::Native& xd, bool overflow);
+	void MultiplyImmediate(u32 imm, Jit64Reg::Any<Jit64Reg::GPR>& ra, Jit64Reg::Native<Jit64Reg::GPR>& xd, bool overflow);
 
 	typedef u32 (*Operation)(u32 a, u32 b);
 	void regimmop(int d, int a, bool binary, u32 value, Operation doop,
@@ -148,11 +148,11 @@ public:
 	void FloatCompare(UGeckoInstruction inst, bool upper = false);
 	void UpdateMXCSR();
 
-	void SafeLoad(Jit64Reg::Any& reg_value, Jit64Reg::Any& reg_addr, Jit64Reg::Any& offset, int accessSize, bool signExtend, bool update);
-	void SafeLoadSwap(Jit64Reg::Any& reg_value, Jit64Reg::Any& reg_addr, Jit64Reg::Any& offset, int accessSize, bool signExtend, bool update);
+	void SafeLoad(Jit64Reg::Any<Jit64Reg::GPR>& reg_value, Jit64Reg::Any<Jit64Reg::GPR>& reg_addr, Jit64Reg::Any<Jit64Reg::GPR>& offset, int accessSize, bool signExtend, bool update);
+	void SafeLoadSwap(Jit64Reg::Any<Jit64Reg::GPR>& reg_value, Jit64Reg::Any<Jit64Reg::GPR>& reg_addr, Jit64Reg::Any<Jit64Reg::GPR>& offset, int accessSize, bool signExtend, bool update);
 
-	void SafeWrite(Jit64Reg::Any& reg_value, Jit64Reg::Any& reg_addr, Jit64Reg::Any& offset, int accessSize, bool update);
-	void SafeWriteSwap(Jit64Reg::Any& reg_value, Jit64Reg::Any& reg_addr, Jit64Reg::Any& offset, int accessSize, bool update);
+	void SafeWrite(Jit64Reg::Any<Jit64Reg::GPR>& reg_value, Jit64Reg::Any<Jit64Reg::GPR>& reg_addr, Jit64Reg::Any<Jit64Reg::GPR>& offset, int accessSize, bool update);
+	void SafeWriteSwap(Jit64Reg::Any<Jit64Reg::GPR>& reg_value, Jit64Reg::Any<Jit64Reg::GPR>& reg_addr, Jit64Reg::Any<Jit64Reg::GPR>& offset, int accessSize, bool update);
 
 	// OPCODES
 	using Instruction = void (Jit64::*)(UGeckoInstruction instCode);

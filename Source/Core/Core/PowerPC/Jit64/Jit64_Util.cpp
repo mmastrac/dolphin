@@ -7,7 +7,7 @@
 using namespace Gen;
 using namespace Jit64Reg;
 
-void Jit64::SafeWrite(Any& reg_value, Any& reg_addr, Any& offset, int accessSize, bool update)
+void Jit64::SafeWrite(Any<Jit64Reg::GPR>& reg_value, Any<Jit64Reg::GPR>& reg_addr, Any<Jit64Reg::GPR>& offset, int accessSize, bool update)
 {
 	// Easy case: we know the address we're writing to
 	if (reg_addr.IsImm())
@@ -28,7 +28,7 @@ void Jit64::SafeWrite(Any& reg_value, Any& reg_addr, Any& offset, int accessSize
 	SafeWriteRegToReg(reg_value, xa, accessSize, offset.Imm32(), CallerSavedRegistersInUse());
 }
 
-void Jit64::SafeWriteSwap(Any& reg_value, Any& reg_addr, Any& offset, int accessSize, bool update)
+void Jit64::SafeWriteSwap(Any<Jit64Reg::GPR>& reg_value, Any<Jit64Reg::GPR>& reg_addr, Any<Jit64Reg::GPR>& offset, int accessSize, bool update)
 {
 	// Easy case: we know the address we're writing to
 	if (reg_addr.IsImm())
@@ -49,10 +49,10 @@ void Jit64::SafeWriteSwap(Any& reg_value, Any& reg_addr, Any& offset, int access
 	SafeWriteRegToReg(reg_value, xa, accessSize, offset.Imm32(), CallerSavedRegistersInUse());
 }
 
-void Jit64::SafeLoad(Any& reg_value, Any& reg_addr, Any& offset, int accessSize, bool signExtend, bool update)
+void Jit64::SafeLoad(Any<Jit64Reg::GPR>& reg_value, Any<Jit64Reg::GPR>& reg_addr, Any<Jit64Reg::GPR>& offset, int accessSize, bool signExtend, bool update)
 {
 }
 
-void Jit64::SafeLoadSwap(Any& reg_value, Any& reg_addr, Any& offset, int accessSize, bool signExtend, bool update)
+void Jit64::SafeLoadSwap(Any<Jit64Reg::GPR>& reg_value, Any<Jit64Reg::GPR>& reg_addr, Any<Jit64Reg::GPR>& offset, int accessSize, bool signExtend, bool update)
 {
 }

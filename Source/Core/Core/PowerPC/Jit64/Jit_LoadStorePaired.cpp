@@ -44,7 +44,7 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
 
 	MOV_sum(32, scratch_extra, ra, indexed ? rb : Imm32((u32)offset));
 
-	auto tx = ra.SetTransactionally(scratch_extra, update);
+	ra.SetTransactionally(scratch_extra, update);
 
 	if (w)
 		CVTSD2SS(XMM0, rs); // one
@@ -124,7 +124,7 @@ void Jit64::psq_lXX(UGeckoInstruction inst)
 
 	MOV_sum(32, scratch_extra, ra, indexed ? rb : Imm32((u32)offset));
 
-	auto tx = ra.SetTransactionally(scratch_extra, update);
+	ra.SetTransactionally(scratch_extra, update);
 
 	if (gqrIsConstant)
 	{
