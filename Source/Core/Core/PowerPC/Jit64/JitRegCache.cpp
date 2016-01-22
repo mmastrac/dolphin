@@ -295,67 +295,67 @@ float Registers::ScoreRegister(Type type, X64Reg xr)
 // }
 
 
-Native::operator X64Reg() const
-{
-	return m_xreg;
-}
+// Native::operator X64Reg() const
+// {
+// 	return m_xreg;
+// }
 
 
-Any::operator OpArg() const
-{
-	return m_reg->m_regs[m_type][m_val].location;
-}
+// Any::operator OpArg() const
+// {
+// 	return m_reg->m_regs[m_type][m_val].location;
+// }
 
-Native Any::Bind(BindMode mode)
-{
-	_assert_msg_(DYNA_REC, m_type == GPR || m_type == FPU, "Cannot bind a native or immediate register");
+// Native Any::Bind(BindMode mode)
+// {
+// 	_assert_msg_(DYNA_REC, m_type == GPR || m_type == FPU, "Cannot bind a native or immediate register");
 
-	switch (mode)
-	{
-	case Read:
-		m_reg->BindToRegister(m_type, m_val, true, false);
-		break;
-	case ReadWrite:
-		m_reg->BindToRegister(m_type, m_val, true, true);
-		break;
-	case Write:
-		m_reg->BindToRegister(m_type, m_val, false, true);
-		break;
-	}
+// 	switch (mode)
+// 	{
+// 	case Read:
+// 		m_reg->BindToRegister(m_type, m_val, true, false);
+// 		break;
+// 	case ReadWrite:
+// 		m_reg->BindToRegister(m_type, m_val, true, true);
+// 		break;
+// 	case Write:
+// 		m_reg->BindToRegister(m_type, m_val, false, true);
+// 		break;
+// 	}
 
-	return Native(m_reg, m_reg->m_regs[m_type][m_val].location.GetSimpleReg());
-}
+// 	return Native(m_reg, m_reg->m_regs[m_type][m_val].location.GetSimpleReg());
+// }
 
-void Any::SetTransactionally(const OpArg& value, bool condition)
-{
-	// if (condition)
-	// {
-	// 	RegCache* which = m_type == GPR ? (RegCache*)m_reg->m_gpr : (RegCache*)m_reg->m_fpu;
+// void Any::SetTransactionally(const OpArg& value, bool condition)
+// {
+// 	// if (condition)
+// 	// {
+// 	// 	RegCache* which = m_type == GPR ? (RegCache*)m_reg->m_gpr : (RegCache*)m_reg->m_fpu;
 
-	// 	if (value.IsImm())
-	// 	{
-	// 		// assert type
-	// 		m_reg->m_gpr->SetImmediate32(m_val, value.Imm32());
-	// 	}
-	// 	else
-	// 	{
-	// 		which->KillImmediate(m_val, true, true);
-	// 		m_reg->m_jit->MOV(32, OpArg(), value);
-	// 	}
-	// }
-}
+// 	// 	if (value.IsImm())
+// 	// 	{
+// 	// 		// assert type
+// 	// 		m_reg->m_gpr->SetImmediate32(m_val, value.Imm32());
+// 	// 	}
+// 	// 	else
+// 	// 	{
+// 	// 		which->KillImmediate(m_val, true, true);
+// 	// 		m_reg->m_jit->MOV(32, OpArg(), value);
+// 	// 	}
+// 	// }
+// }
 
-void Any::AddTransactionally(const OpArg& value, bool condition)
-{
-	if (condition)
-		m_reg->m_jit->ADD(32, OpArg(), value);
-}
+// void Any::AddTransactionally(const OpArg& value, bool condition)
+// {
+// 	if (condition)
+// 		m_reg->m_jit->ADD(32, OpArg(), value);
+// }
 
-void Any::Unlock()
-{
-	auto& ppc = m_reg->m_regs[m_type][m_val];
-	_assert_msg_(DYNA_REC, ppc.locked, "Attempted to unlock a register that was never locked");
-	ppc.locked = false;
-}
+// void Any::Unlock()
+// {
+// 	auto& ppc = m_reg->m_regs[m_type][m_val];
+// 	_assert_msg_(DYNA_REC, ppc.locked, "Attempted to unlock a register that was never locked");
+// 	ppc.locked = false;
+// }
 
 };

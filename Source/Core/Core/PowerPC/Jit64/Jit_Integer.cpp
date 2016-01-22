@@ -918,7 +918,7 @@ void Jit64::subfx(UGeckoInstruction inst)
 		ComputeRC(rd, false);
 }
 
-void Jit64::MultiplyImmediate(u32 imm, Jit64Reg::Any& ra, Jit64Reg::Native& xd, bool overflow)
+void Jit64::MultiplyImmediate(u32 imm, Jit64Reg::Any<Jit64Reg::GPR>& ra, Jit64Reg::Native<Jit64Reg::GPR>& xd, bool overflow)
 {
 	// simplest cases first
 	if (imm == 0)

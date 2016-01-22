@@ -91,10 +91,10 @@ private:
 	Any(Registers* reg, Type type, u32 val): m_reg(reg), m_type(type), m_val(val) {};
 
 public:
-	Any(Any&& other): m_reg(other.m_reg), m_type(other.m_type), m_val(other.m_val) {}
+	Any(Any<T>&& other): m_reg(other.m_reg), m_type(other.m_type), m_val(other.m_val) {}
 	~Any() { Unlock(); }
-	Any(const Any& other): m_reg(other.m_reg), m_type(other.m_type), m_val(other.m_val) {}
-    Any& operator=(const Any& other) = default;
+	Any(const Any<T>& other): m_reg(other.m_reg), m_type(other.m_type), m_val(other.m_val) {}
+    Any& operator=(const Any<T>& other) = default;
 
 	bool IsImm();
 	u32 Imm32();
