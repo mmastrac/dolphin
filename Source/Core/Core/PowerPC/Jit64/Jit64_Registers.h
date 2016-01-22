@@ -10,8 +10,6 @@
 namespace Jit64Reg
 {
 
-static const int NUMXREGS = 16;
-
 using namespace Gen;
 
 // Forward
@@ -158,64 +156,9 @@ public:
 	operator Gen::X64Reg() const;
 };
 
-template<Type T, std::size_t SIZE>
-class RegisterClassBase
-{
-protected:
-	virtual const std::array<X64Reg, SIZE>& GetAllocationOrder() const = 0;
-
-public:
-	// Borrows a host register. If which is omitted, an appropriate one is chosen.
-	Native Borrow(Gen::X64Reg which = Gen::INVALID_REG);
-
-	// Locks a target register for the duration of this scope. This register will
-	// not be moved from its current location unless it is explicitly bound.
-	Any Lock(size_t register);
-
-	void BindBatch(BitSet32 regs);
-	void FlushBatch(BitSet32 regs);
-
-	BitSet32 InUse() const;
-};
-
-template<Type T, std::size_t SIZE>
-class RegisterClass
-{
-private:
-	RegisterClass() {}
-};
-
-template<std::size_t N>
-class RegisterClass<FPU, N>: public RegisterClassBase<FPU, N>
-{
-protected:
-	virtual const std::array<X64Reg, N>& GetAllocationOrder() const { return FPU_ALLOCATION_ORDER; }
-};
-
-typedef RegisterClass<FPU, 14> FPURegisters;
-
-template<std::size_t N>
-class RegisterClass<GPR, N>: public RegisterClassBase<GPR, N>
-{
-protected:
-	virtual const std::array<X64Reg, N>& GetAllocationOrder() const { return GPR_ALLOCATION_ORDER; }
-
-public:
-	// A virtual register that contains zero and cannot be updated
-	Any Zero() { return Imm32(0); }
-
-	// A virtual register that contains an immediate and cannot be updated
-	Any Imm32(u32 immediate);
-};
-
-typedef RegisterClass<GPR, 11> GPRRegisters;
-
-
 class Registers
 {
 	friend class Any;
-	template<Type T, std::size_t SIZE>
-	friend class RegisterClass;
 
 private:
 	Gen::XEmitter* m_jit;
@@ -245,29 +188,74 @@ private:
 
 	void LoadRegister(Type type, size_t preg, X64Reg newLoc);
 	void StoreRegister(Type type, size_t preg, const OpArg& newLoc);
+	void StoreFromRegister(Type type, size_t preg, FlushMode mode);
 
 	BitSet32 GetRegUtilization(Type type);
 	BitSet32 CountRegsIn(Type type, reg_t preg, u32 lookahead);
 	void BindToRegister(Type type, reg_t preg, bool doLoad, bool makeDirty);
 	float ScoreRegister(Type type, X64Reg xr);
+	X64Reg GetFreeXReg(Type type);
+	template <std::size_t SIZE>
+	X64Reg GetFreeXReg(Type type, std::array<X64Reg, SIZE> order);
+
+	bool IsBound(Type type, size_t preg) const
+	{
+		return m_regs[type][preg].away && m_regs[type][preg].location.IsSimpleReg();
+	}
+
+	Gen::X64Reg RX(Type type, size_t preg) const
+	{
+		if (IsBound(type, preg))
+			return m_regs[type][preg].location.GetSimpleReg();
+
+		PanicAlert("Unbound register - %zu", preg);
+		return Gen::INVALID_REG;
+	}
+
+	int NumFreeRegisters();
 
 public:
-	FPURegisters fpu;
-	GPRRegisters gpr;
-
 	void Init();
 
 	Registers(Gen::XEmitter* jit): m_jit(jit) {}
 
+	// Locks a PPC register for the duration of this scope. This register will
+	// not be moved from its current location unless it is explicitly bound.
+	Any Lock(Type type, size_t register);
+
+	// Locks a PPC register for the duration of this scope. This register will
+	// not be moved from its current location unless it is explicitly bound.
+	Any LockGPR(size_t preg) { return Lock(GPR, preg); }
+
+	// Locks a PPC register for the duration of this scope. This register will
+	// not be moved from its current location unless it is explicitly bound.
+	Any LockFPU(size_t freg) { return Lock(FPU, freg); }
+
+	// A virtual register that contains zero and cannot be updated
+	Any Zero() { return Imm32(0); }
+
+	// A virtual register that contains an immediate and cannot be updated
+	Any Imm32(u32 immediate);
+
 	// Create an independent copy of the register cache state for a branch
 	Registers Branch();
 
+	void BindBatch(Type type, BitSet32 regs);
+	void FlushBatch(Type type, BitSet32 regs);
+
 	int SanityCheck() const;
+
+	BitSet32 InUse(Type type) const;
 
 	void Flush();
 
 	void Commit();
 	void Rollback();
+
+	// Borrow a scratch register
+	Native Borrow(Type type, Gen::X64Reg which = Gen::INVALID_REG);
+	Native BorrowGPR(Gen::X64Reg which = Gen::INVALID_REG) { return Borrow(GPR, which); }
+	Native BorrowFPU(Gen::X64Reg which = Gen::INVALID_REG) { return Borrow(FPU, which); }
 };
 
 };

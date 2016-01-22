@@ -779,8 +779,8 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 			// output, which needs to be bound in the actual instruction compilation.
 			// TODO: make this smarter in the case that we're actually register-starved, i.e.
 			// prioritize the more important registers.
-			regs.BindBatch(Jit64Reg::GPR, ops[i].regsIn);
-			regs.BindBatch(Jit64Reg::FPU, ops[i].fregsIn);
+			regs.gpr.BindBatch(ops[i].regsIn);
+			regs.fpu.BindBatch(ops[i].fregsIn);
 
 			Jit64Tables::CompileInstruction(ops[i]);
 
@@ -824,8 +824,8 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 			regs.Commit();
 
 			// If we have a register that will never be used again, flush it.
-			regs.FlushBatch(Jit64Reg::GPR, ~ops[i].gprInUse);
-			regs.FlushBatch(Jit64Reg::FPU, ~ops[i].fprInUse);
+			regs.gpr.FlushBatch(~ops[i].gprInUse);
+			regs.fpu.FlushBatch(~ops[i].fprInUse);
 
 			if (opinfo->flags & FL_LOADSTORE)
 				++js.numLoadStoreInst;
@@ -868,7 +868,7 @@ BitSet8 Jit64::ComputeStaticGQRs(PPCAnalyst::CodeBlock& code_block)
 
 BitSet32 Jit64::CallerSavedRegistersInUse()
 {
-	return (regs.InUse(Jit64Reg::GPR) | (regs.InUse(Jit64Reg::FPU) << 16)) & ABI_ALL_CALLER_SAVED;
+	return (regs.gpr.InUse() | (regs.fpu.InUse() << 16)) & ABI_ALL_CALLER_SAVED;
 }
 
 void Jit64::EnableBlockLink()

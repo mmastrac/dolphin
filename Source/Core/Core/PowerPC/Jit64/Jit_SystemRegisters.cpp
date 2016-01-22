@@ -616,7 +616,7 @@ void Jit64::mffsx(UGeckoInstruction inst)
 	MOV(32, PPCSTATE(fpscr), R(RSCRATCH));
 
 	int d = inst.FD;
-	auto rd = regs.LockFPU(d);
+	auto rd = regs.fpu.Lock(d);
 	auto xd = rd.Bind(Jit64Reg::Write);
 	MOV(64, R(RSCRATCH2), Imm64(0xFFF8000000000000));
 	OR(64, R(RSCRATCH), R(RSCRATCH2));
@@ -716,7 +716,7 @@ void Jit64::mtfsfx(UGeckoInstruction inst)
 	}
 
 	int b = inst.FB;
-	auto rb = regs.LockFPU(b);
+	auto rb = regs.fpu.Lock(b);
 
 	if (rb.IsRegBound())
 	{

@@ -31,7 +31,7 @@ void Jit64::lfXXX(UGeckoInstruction inst)
 
 	auto ra = a ? regs.LockGPR(a) : regs.Zero();
 	auto rb = indexed ? regs.LockGPR(b) : regs.Imm32((u32)(s32)(s16)inst.SIMM_16);
-	auto rd = regs.LockFPU(d);
+	auto rd = regs.fpu.Lock(d);
 
 	SafeLoad(scratch, ra, rb, 32, false, update);
 
@@ -65,7 +65,7 @@ void Jit64::stfXXX(UGeckoInstruction inst)
 
 	auto ra = a ? regs.LockGPR(a) : regs.Zero();
 	auto rb = indexed ? regs.LockGPR(b) : regs.Imm32((u32)(s32)(s16)inst.SIMM_16);
-	auto rs = regs.LockFPU(s);
+	auto rs = regs.fpu.Lock(s);
 
 	if (single)
 	{
@@ -106,7 +106,7 @@ void Jit64::stfiwx(UGeckoInstruction inst)
 
 	auto ra = a ? regs.LockGPR(a) : regs.Zero();
 	auto rb = regs.LockGPR(b);
-	auto rs = regs.LockFPU(s);
+	auto rs = regs.fpu.Lock(s);
 
 	MOV_sum(32, RSCRATCH2, ra, rb);
 

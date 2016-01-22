@@ -3,7 +3,6 @@
 // Refer to the license.txt file included.
 
 #include "Core/PowerPC/Jit64/Jit.h"
-#include "Core/PowerPC/Jit64/Jit64_Registers.h"
 
 using namespace Gen;
 using namespace Jit64Reg;

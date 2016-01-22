@@ -38,7 +38,7 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
 
 	auto ra = regs.LockGPR(a);
 	auto rb = regs.LockGPR(b);
-	auto rs = regs.LockFPU(s);
+	auto rs = regs.fpu.Lock(s);
 
 	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
 
@@ -149,6 +149,6 @@ void Jit64::psq_lXX(UGeckoInstruction inst)
 		CALLptr(MScaled(scratch, SCALE_8, (u32)(u64)(&asm_routines.pairedLoadQuantized[w * 8])));
 	}
 
-	auto rs = regs.LockFPU(s).Bind(Jit64Reg::Write);
+	auto rs = regs.fpu.Lock(s).Bind(Jit64Reg::Write);
 	CVTPS2PD(rs, R(XMM0));
 }

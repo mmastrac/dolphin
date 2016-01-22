@@ -132,7 +132,7 @@ void Jit64::lXXx(UGeckoInstruction inst)
 
 		// do our job at first
 		s32 offset = (s32)(s16)inst.SIMM_16;
-		auto xd = rd.Bind(Jit64Reg::Read);
+		auto xd = rd.Bind(Jit64Reg::Write);
 		SafeLoadToReg(xd, ra, accessSize, offset, CallerSavedRegistersInUse(), signExtend);
 
 		// if it's still 0, we can wait until the next event

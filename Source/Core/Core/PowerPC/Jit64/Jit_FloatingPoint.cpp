@@ -20,7 +20,7 @@ alignas(16) static const double half_qnan_and_s32_max[2] = {0x7FFFFFFF, -0x80000
 X64Reg Jit64::fp_tri_op(X64Reg xd, int d, int a, int b, bool reversible, bool single, void (XEmitter::*avxOp)(X64Reg, X64Reg, const OpArg&),
                         void (XEmitter::*sseOp)(X64Reg, const OpArg&), bool packed, bool preserve_inputs, bool roundRHS)
 {
-	auto ra = regs.LockFPU(a), rb = regs.LockFPU(b);
+	auto ra = regs.fpu.Lock(a), rb = regs.fpu.Lock(b);
 	X64Reg dest = preserve_inputs ? XMM1 : xd;
 	if (roundRHS)
 	{
@@ -73,7 +73,7 @@ void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm)
 
 	std::vector<Jit64Reg::Any*> inputs;
 	u32 a = inst.FA, b = inst.FB, c = inst.FC;
-	auto ra = regs.LockFPU(a), rb = regs.LockFPU(b), rc = regs.LockFPU(c);
+	auto ra = regs.fpu.Lock(a), rb = regs.fpu.Lock(b), rc = regs.fpu.Lock(c);
 	for (auto r : {&ra, &rb, &rc})
 	{
 		if (!js.op->fregsIn[r->Register()])
@@ -187,7 +187,7 @@ void Jit64::fp_arith(UGeckoInstruction inst)
 	bool preserve_inputs = SConfig::GetInstance().bAccurateNaNs;
 
 	bool read = d == a || d == b || !single;
-	auto xd = regs.LockFPU(d).Bind(read ? Jit64Reg::ReadWrite : Jit64Reg::Write);
+	auto xd = regs.fpu.Lock(d).Bind(read ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 
 	X64Reg dest = INVALID_REG;
 	switch (inst.SUBOP5)
@@ -228,10 +228,10 @@ void Jit64::fmaddXX(UGeckoInstruction inst)
 	               jit->js.op->fprIsDuplicated[b] &&
 	               jit->js.op->fprIsDuplicated[c]);
 
-	auto ra = regs.LockFPU(a);
-	auto rb = regs.LockFPU(b);
-	auto rc = regs.LockFPU(c);
-	auto rd = regs.LockFPU(d);
+	auto ra = regs.fpu.Lock(a);
+	auto rb = regs.fpu.Lock(b);
+	auto rc = regs.fpu.Lock(c);
+	auto rd = regs.fpu.Lock(d);
 
 	switch(inst.SUBOP5)
 	{
@@ -363,8 +363,8 @@ void Jit64::fsign(UGeckoInstruction inst)
 	int b = inst.FB;
 	bool packed = inst.OPCD == 4;
 
-	auto rb = regs.LockFPU(b);
-	auto rd = regs.LockFPU(d);
+	auto rb = regs.fpu.Lock(b);
+	auto rd = regs.fpu.Lock(d);
 	auto xd = rd.Bind(Jit64Reg::Write);
 
 	switch (inst.SUBOP10)
@@ -397,10 +397,10 @@ void Jit64::fselx(UGeckoInstruction inst)
 
 	bool packed = inst.OPCD == 4; // ps_sel
 
-	auto ra = regs.LockFPU(a);
-	auto rb = regs.LockFPU(b);
-	auto rc = regs.LockFPU(c);
-	auto rd = regs.LockFPU(d);
+	auto ra = regs.fpu.Lock(a);
+	auto rb = regs.fpu.Lock(b);
+	auto rc = regs.fpu.Lock(c);
+	auto rd = regs.fpu.Lock(d);
 
 	PXOR(XMM0, R(XMM0));
 	// This condition is very tricky; there's only one right way to handle both the case of
@@ -443,8 +443,8 @@ void Jit64::fmrx(UGeckoInstruction inst)
 	if (d == b)
 		return;
 
-	auto rb = regs.LockFPU(b);
-	auto rd = regs.LockFPU(d);
+	auto rb = regs.fpu.Lock(b);
+	auto rd = regs.fpu.Lock(d);
 
 	OpArg dest = rd;
 
@@ -492,8 +492,8 @@ void Jit64::FloatCompare(UGeckoInstruction inst, bool upper)
 		output[3 - (next.CRBB & 3)] |= 1 << dst;
 	}
 
-	auto ra = regs.LockFPU(a);
-	auto rb = regs.LockFPU(b);
+	auto ra = regs.fpu.Lock(a);
+	auto rb = regs.fpu.Lock(b);
 	auto xb = rb.Bind(Jit64Reg::Read);
 
 	if (fprf)
@@ -584,8 +584,8 @@ void Jit64::fctiwx(UGeckoInstruction inst)
 	int d = inst.RD;
 	int b = inst.RB;
 
-	auto rb = regs.LockFPU(b);
-	auto rd = regs.LockFPU(d);
+	auto rb = regs.fpu.Lock(b);
+	auto rd = regs.fpu.Lock(d);
 
 	// Intel uses 0x80000000 as a generic error code while PowerPC uses clamping:
 	//
@@ -626,7 +626,7 @@ void Jit64::frspx(UGeckoInstruction inst)
 	int d = inst.FD;
 	bool packed = jit->js.op->fprIsDuplicated[b] && !cpu_info.bAtom;
 
-	auto rb = regs.LockFPU(b), rd = regs.LockFPU(d);
+	auto rb = regs.fpu.Lock(b), rd = regs.fpu.Lock(d);
 	auto xd = rd.Bind(Jit64Reg::Write);
 	ForceSinglePrecision(xd, rb, packed, true);
 	SetFPRFIfNeeded(xd);
@@ -640,7 +640,7 @@ void Jit64::frsqrtex(UGeckoInstruction inst)
 	int b = inst.FB;
 	int d = inst.FD;
 
-	auto rb = regs.LockFPU(b), rd = regs.LockFPU(d);
+	auto rb = regs.fpu.Lock(b), rd = regs.fpu.Lock(d);
 	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
 	MOVAPD(XMM0, rb);
 	CALL(asm_routines.frsqrte);
@@ -657,7 +657,7 @@ void Jit64::fresx(UGeckoInstruction inst)
 	int b = inst.FB;
 	int d = inst.FD;
 
-	auto rb = regs.LockFPU(b), rd = regs.LockFPU(d);
+	auto rb = regs.fpu.Lock(b), rd = regs.fpu.Lock(d);
 	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
 	MOVAPD(XMM0, rb);
 	CALL(asm_routines.fres);

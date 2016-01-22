@@ -21,8 +21,8 @@ void Jit64::ps_mr(UGeckoInstruction inst)
 	if (d == b)
 		return;
 
-	auto rb = regs.LockFPU(b);
-	auto rd = regs.LockFPU(d);
+	auto rb = regs.fpu.Lock(b);
+	auto rd = regs.fpu.Lock(d);
 
 	auto xd = rd.Bind(Jit64Reg::Write);
 	MOVAPD(xd, rb);
@@ -39,10 +39,10 @@ void Jit64::ps_sum(UGeckoInstruction inst)
 	int b = inst.FB;
 	int c = inst.FC;
 
-	auto rd = regs.LockFPU(d);
-	auto ra = regs.LockFPU(a);
-	auto rb = regs.LockFPU(b);
-	auto rc = regs.LockFPU(c);
+	auto rd = regs.fpu.Lock(d);
+	auto ra = regs.fpu.Lock(a);
+	auto rb = regs.fpu.Lock(b);
+	auto rc = regs.fpu.Lock(c);
 
 	auto xd = rd.Bind(d == b || d == c ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 	auto tmp = regs.BorrowFPU();
@@ -94,9 +94,9 @@ void Jit64::ps_muls(UGeckoInstruction inst)
 	int a = inst.FA;
 	int c = inst.FC;
 	bool round_input = !jit->js.op->fprIsSingle[c];
-	auto rd = regs.LockFPU(d);
-	auto ra = regs.LockFPU(a);
-	auto rc = regs.LockFPU(c);
+	auto rd = regs.fpu.Lock(d);
+	auto ra = regs.fpu.Lock(a);
+	auto rc = regs.fpu.Lock(c);
 	switch (inst.SUBOP5)
 	{
 	case 12: // ps_muls0
@@ -127,9 +127,9 @@ void Jit64::ps_mergeXX(UGeckoInstruction inst)
 	int d = inst.FD;
 	int a = inst.FA;
 	int b = inst.FB;
-	auto rd = regs.LockFPU(d);
-	auto ra = regs.LockFPU(a);
-	auto rb = regs.LockFPU(b);
+	auto rd = regs.fpu.Lock(d);
+	auto ra = regs.fpu.Lock(a);
+	auto rb = regs.fpu.Lock(b);
 	auto xd = rd.Bind(d == a || d == b ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 
 	switch (inst.SUBOP10)
@@ -158,8 +158,8 @@ void Jit64::ps_rsqrte(UGeckoInstruction inst)
 	FALLBACK_IF(inst.Rc);
 	int b = inst.FB;
 	int d = inst.FD;
-	auto rd = regs.LockFPU(d);
-	auto rb = regs.LockFPU(b);
+	auto rd = regs.fpu.Lock(d);
+	auto rb = regs.fpu.Lock(b);
 	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
 	
 	auto xb = rb.Bind(Jit64Reg::Read);
@@ -185,8 +185,8 @@ void Jit64::ps_res(UGeckoInstruction inst)
 	FALLBACK_IF(inst.Rc);
 	int b = inst.FB;
 	int d = inst.FD;
-	auto rd = regs.LockFPU(d);
-	auto rb = regs.LockFPU(b);
+	auto rd = regs.fpu.Lock(d);
+	auto rb = regs.fpu.Lock(b);
 	auto scratch_extra = regs.BorrowGPR(RSCRATCH_EXTRA);
 
 	auto xb = rb.Bind(Jit64Reg::Read);
