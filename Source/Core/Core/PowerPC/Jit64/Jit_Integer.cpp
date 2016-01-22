@@ -162,7 +162,7 @@ void Jit64::ComputeRC(const OpArg& arg, bool needs_test, bool needs_sext)
 				// better to flush it here so that we don't have to flush it on both sides of the branch.
 				// We don't want to do this if a test is needed though, because it would interrupt macro-op
 				// fusion.
-				regs.FlushBatch(Jit64Reg::GPR, ~js.op->gprInUse);
+				regs.gpr.FlushBatch(~js.op->gprInUse);
 			}
 			DoMergedBranchCondition();
 		}
@@ -218,8 +218,8 @@ void Jit64::regimmop(int d, int a, bool binary, u32 value, Operation doop, void 
 {
 	bool needs_test = false;
 
-	auto ra = regs.LockGPR(d);
-	auto rd = regs.LockGPR(a);
+	auto ra = regs.gpr.Lock(d);
+	auto rd = regs.gpr.Lock(a);
 
 	// Be careful; addic treats r0 as r0, but addi treats r0 as zero.
 	if (a || binary || carry)
@@ -274,16 +274,16 @@ void Jit64::reg_imm(UGeckoInstruction inst)
 	{
 	case 14: // addi
 	{
-		auto ra = regs.LockGPR(a);
+		auto ra = regs.gpr.Lock(a);
 		// occasionally used as MOV - emulate, with immediate propagation
 		if (ra.IsImm() && d != a && a != 0)
 		{
-			auto rd = regs.LockGPR(d);
+			auto rd = regs.gpr.Lock(d);
 			rd.SetImm32(ra.Imm32() + (u32)(s32)inst.SIMM_16);
 		}
 		else if (inst.SIMM_16 == 0 && d != a && a != 0)
 		{
-			auto xd = regs.LockGPR(d).Bind(Jit64Reg::Write);
+			auto xd = regs.gpr.Lock(d).Bind(Jit64Reg::Write);
 			MOV(32, xd, ra);
 		}
 		else
@@ -492,8 +492,8 @@ void Jit64::cmpXX(UGeckoInstruction inst)
 		}
 	}
 
-	auto ra = regs.LockGPR(a);
-	auto rb = useImmediate ? regs.Imm32(immediate) : regs.LockGPR(b);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = useImmediate ? regs.gpr.Imm32(immediate) : regs.gpr.Lock(b);
 
 	OpArg comparand = rb;
 
@@ -596,9 +596,9 @@ void Jit64::boolX(UGeckoInstruction inst)
 	bool needs_test = false;
 	_dbg_assert_msg_(DYNA_REC, inst.OPCD == 31, "Invalid boolX");
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rs = regs.gpr.Lock(s);
 
 	if (rs.IsImm() && rb.IsImm())
 	{
@@ -817,8 +817,8 @@ void Jit64::extsXx(UGeckoInstruction inst)
 	int a = inst.RA, s = inst.RS;
 	int size = inst.SUBOP10 == 922 ? 16 : 8;
 
-	auto ra = regs.LockGPR(a);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rs = regs.gpr.Lock(s);
 
 	if (rs.IsImm())
 	{
@@ -838,8 +838,8 @@ void Jit64::subfic(UGeckoInstruction inst)
 	INSTRUCTION_START
 	JITDISABLE(bJITIntegerOff);
 	int a = inst.RA, d = inst.RD;
-	auto ra = regs.LockGPR(a);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rd = regs.gpr.Lock(d);
 
 	auto xd = rd.Bind(a == d ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 	int imm = inst.SIMM_16;
@@ -881,9 +881,9 @@ void Jit64::subfx(UGeckoInstruction inst)
 	INSTRUCTION_START
 	JITDISABLE(bJITIntegerOff);
 	int a = inst.RA, b = inst.RB, d = inst.RD;
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rd = regs.gpr.Lock(d);
 
 	if (ra.IsImm() && rb.IsImm())
 	{
@@ -984,8 +984,8 @@ void Jit64::mulli(UGeckoInstruction inst)
 	int a = inst.RA, d = inst.RD;
 	u32 imm = inst.SIMM_16;
 
-	auto ra = regs.LockGPR(a);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rd = regs.gpr.Lock(d);
 
 	if (ra.IsImm())
 	{
@@ -1004,9 +1004,9 @@ void Jit64::mullwx(UGeckoInstruction inst)
 	JITDISABLE(bJITIntegerOff);
 	int a = inst.RA, b = inst.RB, d = inst.RD;
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rd = regs.gpr.Lock(d);
 
 	if (ra.IsImm() && rb.IsImm())
 	{
@@ -1051,9 +1051,9 @@ void Jit64::mulhwXx(UGeckoInstruction inst)
 	int a = inst.RA, b = inst.RB, d = inst.RD;
 	bool sign = inst.SUBOP10 == 75;
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rd = regs.gpr.Lock(d);
 
 	if (ra.IsImm() && rb.IsImm())
 	{
@@ -1095,9 +1095,9 @@ void Jit64::divwux(UGeckoInstruction inst)
 	JITDISABLE(bJITIntegerOff);
 	int a = inst.RA, b = inst.RB, d = inst.RD;
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rd = regs.gpr.Lock(d);
 
 	if (ra.IsImm() && rb.IsImm())
 	{
@@ -1214,9 +1214,9 @@ void Jit64::divwx(UGeckoInstruction inst)
 	JITDISABLE(bJITIntegerOff);
 	int a = inst.RA, b = inst.RB, d = inst.RD;
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rd = regs.gpr.Lock(d);
 
 	if (ra.IsImm() && rb.IsImm())
 	{
@@ -1285,9 +1285,9 @@ void Jit64::addx(UGeckoInstruction inst)
 	int a = inst.RA, b = inst.RB, d = inst.RD;
 	bool needs_test = false;
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rd = regs.gpr.Lock(d);
 
 	if (ra.IsImm() && rb.IsImm())
 	{
@@ -1335,9 +1335,9 @@ void Jit64::arithXex(UGeckoInstruction inst)
 	int d = inst.RD;
 	bool same_input_sub = !add && regsource && a == b;
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rd = regs.gpr.Lock(d);
 
 	auto xd = rd.Bind(!same_input_sub && (d == a || d == b) ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 	if (!js.carryFlagSet)
@@ -1396,9 +1396,9 @@ void Jit64::arithcx(UGeckoInstruction inst)
 	JITDISABLE(bJITIntegerOff);
 	bool add = !!(inst.SUBOP10 & 2); // add or sub
 	int a = inst.RA, b = inst.RB, d = inst.RD;
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rd = regs.gpr.Lock(d);
 	auto xd = rd.Bind(d == a || d == b ? Jit64Reg::ReadWrite : Jit64Reg::Write);
 
 	if (d == a && d != b)
@@ -1436,8 +1436,8 @@ void Jit64::rlwinmx(UGeckoInstruction inst)
 	JITDISABLE(bJITIntegerOff);
 	int a = inst.RA;
 	int s = inst.RS;
-	auto ra = regs.LockGPR(a);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rs = regs.gpr.Lock(s);
 
 	if (rs.IsImm())
 	{
@@ -1524,8 +1524,8 @@ void Jit64::rlwimix(UGeckoInstruction inst)
 	JITDISABLE(bJITIntegerOff);
 	int a = inst.RA;
 	int s = inst.RS;
-	auto ra = regs.LockGPR(a);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rs = regs.gpr.Lock(s);
 
 	if (ra.IsImm() && rs.IsImm())
 	{
@@ -1624,9 +1624,9 @@ void Jit64::rlwnmx(UGeckoInstruction inst)
 	INSTRUCTION_START
 	JITDISABLE(bJITIntegerOff);
 	int a = inst.RA, b = inst.RB, s = inst.RS;
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rs = regs.gpr.Lock(s);
 
 	u32 mask = Helper_Mask(inst.MB, inst.ME);
 	if (rb.IsImm() && rs.IsImm())
@@ -1660,8 +1660,8 @@ void Jit64::negx(UGeckoInstruction inst)
 	JITDISABLE(bJITIntegerOff);
 	int a = inst.RA;
 	int d = inst.RD;
-	auto ra = regs.LockGPR(a);
-	auto rd = regs.LockGPR(d);
+	auto ra = regs.gpr.Lock(a);
+	auto rd = regs.gpr.Lock(d);
 
 	if (ra.IsImm())
 	{
@@ -1689,9 +1689,9 @@ void Jit64::srwx(UGeckoInstruction inst)
 	int a = inst.RA;
 	int b = inst.RB;
 	int s = inst.RS;
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rs = regs.gpr.Lock(s);
 
 	if (rb.IsImm() && rs.IsImm())
 	{
@@ -1722,9 +1722,9 @@ void Jit64::slwx(UGeckoInstruction inst)
 	int a = inst.RA;
 	int b = inst.RB;
 	int s = inst.RS;
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rs = regs.gpr.Lock(s);
 
 	if (rb.IsImm() && rs.IsImm())
 	{
@@ -1762,9 +1762,9 @@ void Jit64::srawx(UGeckoInstruction inst)
 	int a = inst.RA;
 	int b = inst.RB;
 	int s = inst.RS;
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rs = regs.gpr.Lock(s);
 
 	auto ecx = regs.gpr.Borrow(ECX);
 	auto scratch = regs.gpr.Borrow();
@@ -1796,8 +1796,8 @@ void Jit64::srawix(UGeckoInstruction inst)
 	int a = inst.RA;
 	int s = inst.RS;
 	int amount = inst.SH;
-	auto ra = regs.LockGPR(a);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rs = regs.gpr.Lock(s);
 
 	if (amount != 0)
 	{
@@ -1850,8 +1850,8 @@ void Jit64::cntlzwx(UGeckoInstruction inst)
 	int a = inst.RA;
 	int s = inst.RS;
 	bool needs_test = false;
-	auto ra = regs.LockGPR(a);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rs = regs.gpr.Lock(s);
 
 	if (rs.IsImm())
 	{
@@ -1892,7 +1892,7 @@ void Jit64::twX(UGeckoInstruction inst)
 	JITDISABLE(bJITIntegerOff);
 
 	s32 a = inst.RA;
-	auto ra = regs.LockGPR(a);
+	auto ra = regs.gpr.Lock(a);
 
 	if (inst.OPCD == 3) // twi
 	{
@@ -1902,7 +1902,7 @@ void Jit64::twX(UGeckoInstruction inst)
 	else // tw
 	{
 		auto xa = ra.Bind(Jit64Reg::Read);
-		auto rb = regs.LockGPR(inst.RB);
+		auto rb = regs.gpr.Lock(inst.RB);
 		CMP(32, xa, rb);
 	}
 

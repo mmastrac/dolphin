@@ -27,9 +27,9 @@ void Jit64::lXXx(UGeckoInstruction inst)
 	FALLBACK_IF(SConfig::GetInstance().bJITLoadStorelXzOff && ((inst.OPCD == 34) || (inst.OPCD == 40) || (inst.OPCD == 32)));
 	FALLBACK_IF(SConfig::GetInstance().bJITLoadStorelwzOff && (inst.OPCD == 32));
 
-	auto ra = a ? regs.LockGPR(a) : regs.Zero();
-	auto rb = inst.OPCD == 31 ? regs.Imm32((u32)(s32)(s16)inst.SIMM_16) : regs.LockGPR(b);
-	auto rd = regs.LockGPR(d);
+	auto ra = a ? regs.gpr.Lock(a) : regs.gpr.Zero();
+	auto rb = inst.OPCD == 31 ? regs.gpr.Imm32((u32)(s32)(s16)inst.SIMM_16) : regs.gpr.Lock(b);
+	auto rd = regs.gpr.Lock(d);
 
 	// Determine memory access size and sign extend
 	int accessSize = 0;
@@ -177,8 +177,8 @@ void Jit64::dcbx(UGeckoInstruction inst)
 	auto value = regs.gpr.Borrow();
 	auto tmp = regs.gpr.Borrow();
 
-	auto ra = inst.RA ? regs.LockGPR(inst.RA) : regs.Zero();
-	auto rb = regs.LockGPR(inst.RB);
+	auto ra = inst.RA ? regs.gpr.Lock(inst.RA) : regs.gpr.Zero();
+	auto rb = regs.gpr.Lock(inst.RB);
 
 	MOV_sum(32, addr, ra, rb);
 
@@ -256,8 +256,8 @@ void Jit64::dcbz(UGeckoInstruction inst)
 	int a = inst.RA;
 	int b = inst.RB;
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
 	auto scratch = regs.gpr.Borrow();
 
 	u32 mem_mask = Memory::ADDR_MASK_HW_ACCESS;
@@ -324,9 +324,9 @@ void Jit64::stX(UGeckoInstruction inst)
 		return;
 	}
 
-	auto rs = regs.LockGPR(s);
-	auto ra = a ? regs.LockGPR(a) : regs.Zero();
-	auto ofs = regs.Imm32(offset);
+	auto rs = regs.gpr.Lock(s);
+	auto ra = a ? regs.gpr.Lock(a) : regs.gpr.Zero();
+	auto ofs = regs.gpr.Imm32(offset);
 	SafeWrite(rs, ra, ofs, accessSize, update);
 }
 
@@ -339,9 +339,9 @@ void Jit64::stXx(UGeckoInstruction inst)
 	bool update = !!(inst.SUBOP10 & 32);
 	bool byte_reverse = !!(inst.SUBOP10 & 512);
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
-	auto rs = regs.LockGPR(s);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
+	auto rs = regs.gpr.Lock(s);
 
 	int accessSize;
 	switch (inst.SUBOP10 & ~32)
@@ -375,16 +375,16 @@ void Jit64::lmw(UGeckoInstruction inst)
 	INSTRUCTION_START
 	JITDISABLE(bJITLoadStoreOff);
 
-	auto ra = inst.RA ? regs.LockGPR(inst.RA) : regs.Zero();
+	auto ra = inst.RA ? regs.gpr.Lock(inst.RA) : regs.gpr.Zero();
 
 	// (this needs some thoughts on perf)
 
 	// TODO: This doesn't handle rollback on DSI correctly
 	for (int i = inst.RD; i < 32; i++)
 	{
-		auto reg = regs.LockGPR(i);
+		auto reg = regs.gpr.Lock(i);
 		u32 offset = (i - inst.RD) * 4 + (u32)(s32)inst.SIMM_16;
-		auto ofs = regs.Imm32(offset);
+		auto ofs = regs.gpr.Imm32(offset);
 
 		SafeLoad(reg, ra, ofs, 32, false, false);
 	}
@@ -395,14 +395,14 @@ void Jit64::stmw(UGeckoInstruction inst)
 	INSTRUCTION_START
 	JITDISABLE(bJITLoadStoreOff);
 
-	auto ra = inst.RA ? regs.LockGPR(inst.RA) : regs.Zero();
+	auto ra = inst.RA ? regs.gpr.Lock(inst.RA) : regs.gpr.Zero();
 
 	// TODO: This doesn't handle rollback on DSI correctly
 	for (int i = inst.RD; i < 32; i++)
 	{
-		auto reg = regs.LockGPR(i);
+		auto reg = regs.gpr.Lock(i);
 		u32 offset = (i - inst.RD) * 4 + (u32)(s32)inst.SIMM_16;
-		auto ofs = regs.Imm32(offset);
+		auto ofs = regs.gpr.Imm32(offset);
 
 		SafeWrite(reg, ra, ofs, 32, false);
 	}

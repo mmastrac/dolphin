@@ -36,8 +36,8 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
 	bool gqrIsConstant = it != js.constantGqr.end();
 	u32 gqrValue = gqrIsConstant ? it->second & 0xffff : 0;
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
 	auto rs = regs.fpu.Lock(s);
 
 	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
@@ -117,8 +117,8 @@ void Jit64::psq_lXX(UGeckoInstruction inst)
 	bool gqrIsConstant = it != js.constantGqr.end();
 	u32 gqrValue = gqrIsConstant ? it->second >> 16 : 0;
 
-	auto ra = regs.LockGPR(a);
-	auto rb = regs.LockGPR(b);
+	auto ra = regs.gpr.Lock(a);
+	auto rb = regs.gpr.Lock(b);
 
 	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
 

@@ -29,8 +29,8 @@ void Jit64::lfXXX(UGeckoInstruction inst)
 
 	auto scratch = regs.gpr.Borrow();
 
-	auto ra = a ? regs.LockGPR(a) : regs.Zero();
-	auto rb = indexed ? regs.LockGPR(b) : regs.Imm32((u32)(s32)(s16)inst.SIMM_16);
+	auto ra = a ? regs.gpr.Lock(a) : regs.gpr.Zero();
+	auto rb = indexed ? regs.gpr.Lock(b) : regs.gpr.Imm32((u32)(s32)(s16)inst.SIMM_16);
 	auto rd = regs.fpu.Lock(d);
 
 	SafeLoad(scratch, ra, rb, 32, false, update);
@@ -63,8 +63,8 @@ void Jit64::stfXXX(UGeckoInstruction inst)
 
 	auto scratch = regs.gpr.Borrow();
 
-	auto ra = a ? regs.LockGPR(a) : regs.Zero();
-	auto rb = indexed ? regs.LockGPR(b) : regs.Imm32((u32)(s32)(s16)inst.SIMM_16);
+	auto ra = a ? regs.gpr.Lock(a) : regs.gpr.Zero();
+	auto rb = indexed ? regs.gpr.Lock(b) : regs.gpr.Imm32((u32)(s32)(s16)inst.SIMM_16);
 	auto rs = regs.fpu.Lock(s);
 
 	if (single)
@@ -104,8 +104,8 @@ void Jit64::stfiwx(UGeckoInstruction inst)
 	int a = inst.RA;
 	int b = inst.RB;
 
-	auto ra = a ? regs.LockGPR(a) : regs.Zero();
-	auto rb = regs.LockGPR(b);
+	auto ra = a ? regs.gpr.Lock(a) : regs.gpr.Zero();
+	auto rb = regs.gpr.Lock(b);
 	auto rs = regs.fpu.Lock(s);
 
 	MOV_sum(32, RSCRATCH2, ra, rb);

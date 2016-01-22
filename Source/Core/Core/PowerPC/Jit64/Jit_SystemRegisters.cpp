@@ -186,7 +186,7 @@ void Jit64::mtspr(UGeckoInstruction inst)
 	JITDISABLE(bJITSystemRegistersOff);
 	u32 iIndex = (inst.SPRU << 5) | (inst.SPRL & 0x1F);
 	int d = inst.RD;
-	auto rd = regs.LockGPR(d);
+	auto rd = regs.gpr.Lock(d);
 
 	switch (iIndex)
 	{
@@ -260,7 +260,7 @@ void Jit64::mfspr(UGeckoInstruction inst)
 	JITDISABLE(bJITSystemRegistersOff);
 	u32 iIndex = (inst.SPRU << 5) | (inst.SPRL & 0x1F);
 	int d = inst.RD;
-	auto rd = regs.LockGPR(d);
+	auto rd = regs.gpr.Lock(d);
 
 	switch (iIndex)
 	{
@@ -308,7 +308,7 @@ void Jit64::mfspr(UGeckoInstruction inst)
 				js.downcountAmount++;
 				js.skipInstructions = 1;
 
-				auto rn = regs.LockGPR(n);
+				auto rn = regs.gpr.Lock(n);
 
 				auto xd = rd.Bind(Jit64Reg::Write);
 				auto xn = rn.Bind(Jit64Reg::Write);
@@ -364,7 +364,7 @@ void Jit64::mtmsr(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
 	JITDISABLE(bJITSystemRegistersOff);
-	auto rs = regs.LockGPR(inst.RS);
+	auto rs = regs.gpr.Lock(inst.RS);
 	rs.LoadIfNotImmediate();
 	MOV(32, PPCSTATE(msr), rs);
 	regs.Flush();
@@ -399,7 +399,7 @@ void Jit64::mfmsr(UGeckoInstruction inst)
 	JITDISABLE(bJITSystemRegistersOff);
 	//Privileged?
 	int d = inst.RD;
-	auto rd = regs.LockGPR(d);
+	auto rd = regs.gpr.Lock(d);
 	auto xd = rd.Bind(Jit64Reg::Write);
 	MOV(32, xd, PPCSTATE(msr));
 }
@@ -416,7 +416,7 @@ void Jit64::mfcr(UGeckoInstruction inst)
 	INSTRUCTION_START
 	JITDISABLE(bJITSystemRegistersOff);
 	int d = inst.RD;
-	auto rd = regs.LockGPR(d);
+	auto rd = regs.gpr.Lock(d);
 	auto scratch_extra = regs.gpr.Borrow(RSCRATCH_EXTRA);
 	CALL(asm_routines.mfcr);
 	auto xd = rd.Bind(Jit64Reg::Write);
@@ -428,7 +428,7 @@ void Jit64::mtcrf(UGeckoInstruction inst)
 	INSTRUCTION_START
 	JITDISABLE(bJITSystemRegistersOff);
 
-	auto rs = regs.LockGPR(inst.RS);
+	auto rs = regs.gpr.Lock(inst.RS);
 
 	// USES_CR
 	u32 crm = inst.CRM;
