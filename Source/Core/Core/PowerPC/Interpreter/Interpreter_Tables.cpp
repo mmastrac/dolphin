@@ -174,6 +174,8 @@ static GekkoOPTemplate table31[] =
 	{971,  Interpreter::divwux,     {"divwuox", OPTYPE_INTEGER, FL_OUT_D | FL_IN_AB | FL_RC_BIT | FL_SET_OE, 40, 0, 0, 0}},
 	{75,   Interpreter::mulhwx,     {"mulhwx",  OPTYPE_INTEGER, FL_OUT_D | FL_IN_AB | FL_RC_BIT, 5, 0, 0, 0}},
 	{11,   Interpreter::mulhwux,    {"mulhwux", OPTYPE_INTEGER, FL_OUT_D | FL_IN_AB | FL_RC_BIT, 5, 0, 0, 0}},
+	{587,  Interpreter::mulhwx,     {"mulhwox", OPTYPE_INTEGER, FL_OUT_D | FL_IN_AB | FL_RC_BIT, 5, 0, 0, 0}},
+	{523,  Interpreter::mulhwux,    {"mulhwuox",OPTYPE_INTEGER, FL_OUT_D | FL_IN_AB | FL_RC_BIT, 5, 0, 0, 0}},
 	{235,  Interpreter::mullwx,     {"mullwx",  OPTYPE_INTEGER, FL_OUT_D | FL_IN_AB | FL_RC_BIT, 5, 0, 0, 0}},
 	{747,  Interpreter::mullwx,     {"mullwox", OPTYPE_INTEGER, FL_OUT_D | FL_IN_AB | FL_RC_BIT | FL_SET_OE, 5, 0, 0, 0}},
 	{104,  Interpreter::negx,       {"negx",    OPTYPE_INTEGER, FL_OUT_D | FL_IN_A | FL_RC_BIT, 1, 0, 0, 0}},

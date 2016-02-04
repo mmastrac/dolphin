@@ -334,7 +334,7 @@ void Jit64::stXx(UGeckoInstruction inst)
 	bool update = !!(inst.SUBOP10 & 32);
 	bool byte_reverse = !!(inst.SUBOP10 & 512);
 
-	auto ra = regs.gpr.Lock(a);
+	auto ra = a ? regs.gpr.Lock(a) : regs.gpr.Zero();
 	auto rb = regs.gpr.Lock(b);
 	auto rs = regs.gpr.Lock(s);
 

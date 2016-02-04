@@ -1815,6 +1815,10 @@ u32* GekkoDisassembler::DoDisassembly(bool big_endian)
 			}
 			break;
 
+		case 523:
+			dab(in, "mulhwuo", 7, 0, 0, -1, 0);
+			break;
+
 		case 533:
 			dab(in, "lswx", 7, 0, 0, 0, 0);
 			break;
@@ -1841,6 +1845,10 @@ u32* GekkoDisassembler::DoDisassembly(bool big_endian)
 
 		case 567:
 			fdab(in, "lfsux", 7);
+			break;
+
+		case 587:
+			dab(in, "mulhwo", 7, 0, 0, -1, 0);
 			break;
 
 		case 595:

@@ -201,7 +201,7 @@ public:
 
 	bool IsImm()
 	{
-		RealizeLock();
+		// Does not realize the lock
 		if (m_data.type == RegisterType::Immediate)
 			return true;
 		if (m_data.type == RegisterType::PPC)
@@ -211,7 +211,7 @@ public:
 
 	bool IsZero()
 	{
-		RealizeLock();
+		// Does not realize the lock
 		if (m_data.type == RegisterType::Immediate)
 			return m_data.val == 0;
 		if (m_data.type == RegisterType::PPC)
@@ -221,7 +221,7 @@ public:
 
 	u32 Imm32()
 	{
-		RealizeLock();
+		// Does not realize the lock
 		if (m_data.type == RegisterType::Immediate)
 			return m_data.val;
 		if (m_data.type == RegisterType::PPC)
@@ -234,7 +234,7 @@ public:
 
 	s32 SImm32()
 	{
-		RealizeLock();
+		// Does not realize the lock
 		if (m_data.type == RegisterType::Immediate)
 			return static_cast<s32>(m_data.val);
 		if (m_data.type == RegisterType::PPC)
