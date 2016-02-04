@@ -282,7 +282,7 @@ void Jit64::DoNothing(UGeckoInstruction _inst)
 	// Yup, just don't do anything.
 }
 
-static const bool ImHereDebug = false;
+static const bool ImHereDebug = true;
 static const bool ImHereLog = false;
 static std::map<u32, int> been_here;
 

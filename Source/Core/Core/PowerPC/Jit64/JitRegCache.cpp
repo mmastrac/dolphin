@@ -34,7 +34,8 @@ template <Type T>
 void Any<T>::RealizeImmediate()
 {
 	RealizeLock();
-    if (IsImm()
+	// TODO: check register pressure
+    if (IsImm())
         m_reg->BindToRegister(m_data.reg, true, false);
 }
 
@@ -94,6 +95,16 @@ void Any<T>::Lock()
 		}
 		else
 		{
+			auto& xreg = m_reg->m_xregs[m_data.xreg];
+			_assert_msg_(DYNAREC, xreg.locked == 0, "Attempting to steal a register that is locked");
+
+			// If this x64 register is bound to PPC one, we need to store back
+			if (xreg.ppcReg != INVALID_REG)
+			{
+				m_reg->StoreFromRegister(xreg.ppcReg, FlushMode::FlushAll);
+				_assert_msg_(DYNAREC, xreg.ppcReg == INVALID_REG, "Didn't properly flush the register");
+			}
+
 			DEBUG_LOG(REGCACHE, "Borrowing register %d", m_data.xreg);
 		}
 		auto& xreg = m_reg->m_xregs[m_data.xreg];

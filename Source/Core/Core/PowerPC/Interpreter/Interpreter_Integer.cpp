@@ -448,8 +448,8 @@ void Interpreter::addx(UGeckoInstruction _inst)
 {
 	rGPR[_inst.RD] = rGPR[_inst.RA] + rGPR[_inst.RB];
 
-	if (_inst.OE)
-		PanicAlert("OE: addx");
+	// if (_inst.OE)
+	// 	PanicAlert("OE: addx");
 
 	if (_inst.Rc)
 		Helper_UpdateCR0(rGPR[_inst.RD]);
@@ -462,8 +462,8 @@ void Interpreter::addcx(UGeckoInstruction _inst)
 	rGPR[_inst.RD] = a + b;
 	SetCarry(Helper_Carry(a,b));
 
-	if (_inst.OE)
-		PanicAlert("OE: addcx");
+	// if (_inst.OE)
+	// 	PanicAlert("OE: addcx");
 
 	if (_inst.Rc)
 		Helper_UpdateCR0(rGPR[_inst.RD]);
@@ -477,8 +477,8 @@ void Interpreter::addex(UGeckoInstruction _inst)
 	rGPR[_inst.RD] = a + b + carry;
 	SetCarry(Helper_Carry(a, b) || (carry != 0 && Helper_Carry(a + b, carry)));
 
-	if (_inst.OE)
-		PanicAlert("OE: addex");
+	// if (_inst.OE)
+	// 	PanicAlert("OE: addex");
 
 	if (_inst.Rc)
 		Helper_UpdateCR0(rGPR[_inst.RD]);
@@ -491,8 +491,8 @@ void Interpreter::addmex(UGeckoInstruction _inst)
 	rGPR[_inst.RD] = a + carry - 1;
 	SetCarry(Helper_Carry(a, carry - 1));
 
-	if (_inst.OE)
-		PanicAlert("OE: addmex");
+	// if (_inst.OE)
+	// 	PanicAlert("OE: addmex");
 
 	if (_inst.Rc)
 		Helper_UpdateCR0(rGPR[_inst.RD]);
@@ -505,8 +505,8 @@ void Interpreter::addzex(UGeckoInstruction _inst)
 	rGPR[_inst.RD] = a + carry;
 	SetCarry(Helper_Carry(a, carry));
 
-	if (_inst.OE)
-		PanicAlert("OE: addzex");
+	// if (_inst.OE)
+	// 	PanicAlert("OE: addzex");
 
 	if (_inst.Rc)
 		Helper_UpdateCR0(rGPR[_inst.RD]);
@@ -618,8 +618,8 @@ void Interpreter::subfx(UGeckoInstruction _inst)
 {
 	rGPR[_inst.RD] = rGPR[_inst.RB] - rGPR[_inst.RA];
 
-	if (_inst.OE)
-		PanicAlert("OE: subfx");
+	// if (_inst.OE)
+	// 	PanicAlert("OE: subfx");
 
 	if (_inst.Rc)
 		Helper_UpdateCR0(rGPR[_inst.RD]);
@@ -632,8 +632,8 @@ void Interpreter::subfcx(UGeckoInstruction _inst)
 	rGPR[_inst.RD] = b - a;
 	SetCarry(a == 0 || Helper_Carry(b, 0-a));
 
-	if (_inst.OE)
-		PanicAlert("OE: subfcx");
+	// if (_inst.OE)
+	// 	PanicAlert("OE: subfcx");
 
 	if (_inst.Rc)
 		Helper_UpdateCR0(rGPR[_inst.RD]);

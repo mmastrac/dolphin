@@ -1088,6 +1088,9 @@ void Jit64::mulhwXx(UGeckoInstruction inst)
 	int a = inst.RA, b = inst.RB, d = inst.RD;
 	bool sign = inst.SUBOP10 == 75;
 
+	if (inst.OE)
+		DEBUG_LOG(DYNA_REC, "Weird instruction encoding: OE requested but ignored");
+
 	auto ra = regs.gpr.Lock(a);
 	auto rb = regs.gpr.Lock(b);
 	auto rd = regs.gpr.Lock(d);
@@ -1284,7 +1287,7 @@ void Jit64::divwx(UGeckoInstruction inst)
 		auto xb = rb.Bind(BindMode::Read);
 		TEST(32, xb, xb);
 		FixupBranch not_div_by_zero = J_CC(CC_NZ);
-		MOV(32, rd, edx);
+		MOV(32, xd, edx);
 		if (inst.OE)
 		{
 			GenerateConstantOverflow(true);
@@ -1293,10 +1296,10 @@ void Jit64::divwx(UGeckoInstruction inst)
 		SetJumpTarget(not_div_by_zero);
 		CMP(32, xb, edx);
 		FixupBranch not_div_by_neg_one = J_CC(CC_NZ);
-		MOV(32, rd, eax);
-		NEG(32, rd);
+		MOV(32, xd, eax);
+		NEG(32, xd);
 		FixupBranch no_overflow = J_CC(CC_NO);
-		XOR(32, rd, rd);
+		XOR(32, xd, xd);
 		if (inst.OE)
 		{
 			GenerateConstantOverflow(true);
@@ -1304,7 +1307,7 @@ void Jit64::divwx(UGeckoInstruction inst)
 		FixupBranch end2 = J();
 		SetJumpTarget(not_div_by_neg_one);
 		IDIV(32, xb);
-		MOV(32, rd, eax);
+		MOV(32, xd, eax);
 		SetJumpTarget(no_overflow);
 		if (inst.OE)
 		{
@@ -1818,22 +1821,22 @@ void Jit64::srawx(UGeckoInstruction inst)
 	auto xa = ra.BindWriteAndReadIf(a == s || a == b);
 	MOV(32, ecx, rb);
 	if (a != s)
-		MOV(32, ra, rs);
-	SHL(64, ra, Imm8(32));
-	SAR(64, ra, ecx);
+		MOV(32, xa, rs);
+	SHL(64, xa, Imm8(32));
+	SAR(64, xa, ecx);
 	if (js.op->wantsCA)
 	{
-		MOV(32, scratch, ra);
-		SHR(64, ra, Imm8(32));
-		TEST(32, ra, scratch);
+		MOV(32, scratch, xa);
+		SHR(64, xa, Imm8(32));
+		TEST(32, xa, scratch);
 	}
 	else
 	{
-		SHR(64, ra, Imm8(32));
+		SHR(64, xa, Imm8(32));
 	}
 	FinalizeCarry(CC_NZ);
 	if (inst.Rc)
-		ComputeRC(ra);
+		ComputeRC(xa);
 }
 
 void Jit64::srawix(UGeckoInstruction inst)

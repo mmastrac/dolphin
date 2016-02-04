@@ -43,11 +43,11 @@ void Jit64::GetCRFieldBit(int field, int bit, X64Reg out, bool negate)
 	}
 }
 
-void Jit64::SetCRFieldBit(int field, int bit, X64Reg in)
+void Jit64::SetCRFieldBit(int field, int bit, GPRNative& in)
 {
 	auto scratch = regs.gpr.Borrow();
 	MOV(64, scratch, PPCSTATE(cr_val[field]));
-	MOVZX(32, 8, in, R(in));
+	MOVZX(32, 8, in, in);
 
 	// Gross but necessary; if the input is totally zero and we set SO or LT,
 	// or even just add the (1<<32), GT will suddenly end up set without us
@@ -64,28 +64,28 @@ void Jit64::SetCRFieldBit(int field, int bit, X64Reg in)
 	{
 	case CR_SO_BIT:  // set bit 61 to input
 		BTR(64, scratch, Imm8(61));
-		SHL(64, R(in), Imm8(61));
-		OR(64, scratch, R(in));
+		SHL(64, in, Imm8(61));
+		OR(64, scratch, in);
 		break;
 
 	case CR_EQ_BIT:  // clear low 32 bits, set bit 0 to !input
 		SHR(64, scratch, Imm8(32));
 		SHL(64, scratch, Imm8(32));
-		XOR(32, R(in), Imm8(1));
-		OR(64, scratch, R(in));
+		XOR(32, in, Imm8(1));
+		OR(64, scratch, in);
 		break;
 
 	case CR_GT_BIT:  // set bit 63 to !input
 		BTR(64, scratch, Imm8(63));
-		NOT(32, R(in));
-		SHL(64, R(in), Imm8(63));
-		OR(64, scratch, R(in));
+		NOT(32, in);
+		SHL(64, in, Imm8(63));
+		OR(64, scratch, in);
 		break;
 
 	case CR_LT_BIT:  // set bit 62 to input
 		BTR(64, scratch, Imm8(62));
-		SHL(64, R(in), Imm8(62));
-		OR(64, scratch, R(in));
+		SHL(64, in, Imm8(62));
+		OR(64, scratch, in);
 		break;
 	}
 
@@ -118,37 +118,38 @@ void Jit64::ClearCRFieldBit(int field, int bit)
 
 void Jit64::SetCRFieldBit(int field, int bit)
 {
-	MOV(64, R(RSCRATCH), PPCSTATE(cr_val[field]));
+	auto scratch = regs.gpr.Borrow();
+	MOV(64, scratch, PPCSTATE(cr_val[field]));
 	if (bit != CR_GT_BIT)
 	{
-		TEST(64, R(RSCRATCH), R(RSCRATCH));
+		TEST(64, scratch, scratch);
 		FixupBranch dont_clear_gt = J_CC(CC_NZ);
-		BTS(64, R(RSCRATCH), Imm8(63));
+		BTS(64, scratch, Imm8(63));
 		SetJumpTarget(dont_clear_gt);
 	}
 
 	switch (bit)
 	{
 	case CR_SO_BIT:
-		BTS(64, PPCSTATE(cr_val[field]), Imm8(61));
+		BTS(64, scratch, Imm8(61));
 		break;
 
 	case CR_EQ_BIT:
-		SHR(64, R(RSCRATCH), Imm8(32));
-		SHL(64, R(RSCRATCH), Imm8(32));
+		SHR(64, scratch, Imm8(32));
+		SHL(64, scratch, Imm8(32));
 		break;
 
 	case CR_GT_BIT:
-		BTR(64, PPCSTATE(cr_val[field]), Imm8(63));
+		BTR(64, scratch, Imm8(63));
 		break;
 
 	case CR_LT_BIT:
-		BTS(64, PPCSTATE(cr_val[field]), Imm8(62));
+		BTS(64, scratch, Imm8(62));
 		break;
 	}
 
-	BTS(64, R(RSCRATCH), Imm8(32));
-	MOV(64, PPCSTATE(cr_val[field]), R(RSCRATCH));
+	BTS(64, scratch, Imm8(32));
+	MOV(64, PPCSTATE(cr_val[field]), scratch);
 }
 
 FixupBranch Jit64::JumpIfCRFieldBit(int field, int bit, bool jump_if_set)
@@ -221,18 +222,19 @@ void Jit64::mtspr(UGeckoInstruction inst)
 		{
 			auto rd = regs.gpr.Lock(d);
 			auto xd = rd.Bind(BindMode::Read);
-			MOV(32, R(RSCRATCH), xd);
-			AND(32, R(RSCRATCH), Imm32(0xff7f));
-			MOV(16, PPCSTATE(xer_stringctrl), R(RSCRATCH));
+			auto scratch = regs.gpr.Borrow();
+			MOV(32, scratch, xd);
+			AND(32, scratch, Imm32(0xff7f));
+			MOV(16, PPCSTATE(xer_stringctrl), scratch);
 
-			MOV(32, R(RSCRATCH), xd);
-			SHR(32, R(RSCRATCH), Imm8(XER_CA_SHIFT));
-			AND(8, R(RSCRATCH), Imm8(1));
-			MOV(8, PPCSTATE(xer_ca), R(RSCRATCH));
+			MOV(32, scratch, xd);
+			SHR(32, scratch, Imm8(XER_CA_SHIFT));
+			AND(8, scratch, Imm8(1));
+			MOV(8, PPCSTATE(xer_ca), scratch);
 
-			MOV(32, R(RSCRATCH), xd);
-			SHR(32, R(RSCRATCH), Imm8(XER_OV_SHIFT));
-			MOV(8, PPCSTATE(xer_so_ov), R(RSCRATCH));
+			MOV(32, scratch, xd);
+			SHR(32, scratch, Imm8(XER_OV_SHIFT));
+			MOV(8, PPCSTATE(xer_so_ov), scratch);
 		}
 		return;
 
@@ -342,13 +344,14 @@ void Jit64::mfspr(UGeckoInstruction inst)
 		auto rd = regs.gpr.Lock(d);
 		auto xd = rd.Bind(BindMode::Write);
 		MOVZX(32, 16, xd, PPCSTATE(xer_stringctrl));
-		MOVZX(32, 8, RSCRATCH, PPCSTATE(xer_ca));
-		SHL(32, R(RSCRATCH), Imm8(XER_CA_SHIFT));
-		OR(32, xd, R(RSCRATCH));
+		auto scratch = regs.gpr.Borrow();
+		MOVZX(32, 8, scratch, PPCSTATE(xer_ca));
+		SHL(32, scratch, Imm8(XER_CA_SHIFT));
+		OR(32, xd, scratch);
 
-		MOVZX(32, 8, RSCRATCH, PPCSTATE(xer_so_ov));
-		SHL(32, R(RSCRATCH), Imm8(XER_OV_SHIFT));
-		OR(32, xd, R(RSCRATCH));
+		MOVZX(32, 8, scratch, PPCSTATE(xer_so_ov));
+		SHL(32, scratch, Imm8(XER_OV_SHIFT));
+		OR(32, xd, scratch);
 		break;
 	}
 	case SPR_WPAR:
@@ -623,7 +626,7 @@ void Jit64::mffsx(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
 	JITDISABLE(bJITSystemRegistersOff);
-	FALLBACK_IF(inst.Rc);
+	//FALLBACK_IF(inst.Rc);
 
 	auto scratch = regs.gpr.Borrow();
 	auto scratch2 = regs.gpr.Borrow();
@@ -670,7 +673,7 @@ void Jit64::mtfsb0x(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
 	JITDISABLE(bJITSystemRegistersOff);
-	FALLBACK_IF(inst.Rc);
+	//FALLBACK_IF(inst.Rc);
 
 	u32 mask= ~(0x80000000 >> inst.CRBD);
 	if (inst.CRBD < 29)
@@ -691,14 +694,14 @@ void Jit64::mtfsb1x(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
 	JITDISABLE(bJITSystemRegistersOff);
-	FALLBACK_IF(inst.Rc);
+	//FALLBACK_IF(inst.Rc);
 
 	auto scratch = regs.gpr.Borrow();
 	u32 mask = 0x80000000 >> inst.CRBD;
 	MOV(32, scratch, PPCSTATE(fpscr));
 	if (mask & FPSCR_ANY_X)
 	{
-		BTS(32, scratch, Imm32(31 - inst.CRBD));
+		BTS(32, scratch, Imm8(31 - inst.CRBD));
 		FixupBranch dont_set_fx = J_CC(CC_C);
 		OR(32, scratch, Imm32(1u << 31));
 		SetJumpTarget(dont_set_fx);
@@ -716,7 +719,7 @@ void Jit64::mtfsfix(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
 	JITDISABLE(bJITSystemRegistersOff);
-	FALLBACK_IF(inst.Rc);
+	//FALLBACK_IF(inst.Rc);
 
 	u8 imm = (inst.hex >> (31 - 19)) & 0xF;
 	u32 or_mask = imm << (28 - 4 * inst.CRFD);
@@ -737,7 +740,7 @@ void Jit64::mtfsfx(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
 	JITDISABLE(bJITSystemRegistersOff);
-	FALLBACK_IF(inst.Rc);
+	//FALLBACK_IF(inst.Rc);
 
 	u32 mask = 0;
 	for (int i = 0; i < 8; i++)

@@ -70,9 +70,10 @@ void Jit64::SafeWrite(GPRRegister& reg_value, GPRRegister& reg_addr, GPRRegister
 	}
 
 	if (swap)
-		_assert_msg_(DYNAREC, 0, "swap");
-
-	SafeWriteRegToReg(R(scratch2), scratch, accessSize, 0, CallerSavedRegistersInUse(), 0/*SAFE_LOADSTORE_NO_SWAP*/);
+        SafeWriteRegToReg(R(scratch2), scratch, accessSize, 0, CallerSavedRegistersInUse(), SAFE_LOADSTORE_NO_SWAP);
+    else
+        SafeWriteRegToReg(R(scratch2), scratch, accessSize, 0, CallerSavedRegistersInUse(), 0);
+    
 }
 
 void Jit64::SafeLoad(GPRNative& reg_value, GPRRegister& reg_addr, GPRRegister& offset, int accessSize, bool signExtend, bool swap, bool update)
@@ -86,7 +87,7 @@ void Jit64::SafeLoad(GPRNative& reg_value, GPRRegister& reg_addr, GPRRegister& o
 	{
 		// TODO: figure out what to do if you bind a borrowed reg
 		auto xv = reg_value.IsRegBound() ? reg_value : reg_value.Bind(BindMode::Write);
-		SafeLoad(xv, reg_addr, offset, accessSize, signExtend, true, update);
+		SafeLoad(xv, reg_addr, offset, accessSize, signExtend, false, update);
 		BSWAP(accessSize, xv);
 		return;
 	}
