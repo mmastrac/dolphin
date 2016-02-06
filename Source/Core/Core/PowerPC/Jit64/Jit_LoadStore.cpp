@@ -33,7 +33,7 @@ void Jit64::lXXx(UGeckoInstruction inst)
 	FALLBACK_IF(SConfig::GetInstance().bJITLoadStorelbzxOff && (inst.OPCD == 31) && (inst.SUBOP10 == 87));
 	FALLBACK_IF(SConfig::GetInstance().bJITLoadStorelXzOff && ((inst.OPCD == 34) || (inst.OPCD == 40) || (inst.OPCD == 32)));
 	FALLBACK_IF(SConfig::GetInstance().bJITLoadStorelwzOff && (inst.OPCD == 32));
-
+    
 	// Determine memory access size and sign extend
 	int accessSize = 0;
 	bool signExtend = false;

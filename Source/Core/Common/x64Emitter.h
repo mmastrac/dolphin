@@ -277,6 +277,9 @@ struct FixupBranch
 	int type; //0 = 8bit 1 = 32bit
 };
 
+// #define EMIT_MSG(name) do { struct X { static void name() {} }; CALL((void*)&X::name); } while(0);
+#define EMIT_MSG(name) do {} while(0);
+
 class XEmitter
 {
 	friend struct OpArg;  // for Write8 etc

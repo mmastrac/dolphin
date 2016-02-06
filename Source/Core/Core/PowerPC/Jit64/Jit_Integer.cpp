@@ -138,6 +138,7 @@ void Jit64::FinalizeCarryOverflow(bool oe, bool inv)
 // LT/GT either.
 void Jit64::ComputeRC(const OpArg& arg, bool needs_test, bool needs_sext)
 {
+	EMIT_MSG(HERE);
 	_assert_msg_(DYNA_REC, arg.IsSimpleReg() || arg.IsImm(), "Invalid ComputeRC operand");
 	if (arg.IsImm())
 	{
@@ -170,8 +171,9 @@ void Jit64::ComputeRC(const OpArg& arg, bool needs_test, bool needs_sext)
 				// better to flush it here so that we don't have to flush it on both sides of the branch.
 				// We don't want to do this if a test is needed though, because it would interrupt macro-op
 				// fusion.
+				gpr.UnlockAll();
 				for (int j : ~js.op->gprInUse)
-					gpr.StoreFromRegister(j);
+					gpr.StoreFromRegister(j, FLUSH_ALL);
 			}
 			DoMergedBranchCondition();
 		}
@@ -352,6 +354,7 @@ bool Jit64::CheckMergedBranch(int crf)
 
 void Jit64::DoMergedBranch()
 {
+	EMIT_MSG(HERE);
 	// Code that handles successful PPC branching.
 	const UGeckoInstruction& next = js.op[1].inst;
 	const u32 nextPC = js.op[1].address;
@@ -392,6 +395,7 @@ void Jit64::DoMergedBranch()
 
 void Jit64::DoMergedBranchCondition()
 {
+	EMIT_MSG(HERE);
 	js.downcountAmount++;
 	js.skipInstructions = 1;
 	const UGeckoInstruction& next = js.op[1].inst;
@@ -428,6 +432,7 @@ void Jit64::DoMergedBranchCondition()
 
 void Jit64::DoMergedBranchImmediate(s64 val)
 {
+	EMIT_MSG(HERE);
 	js.downcountAmount++;
 	js.skipInstructions = 1;
 	const UGeckoInstruction& next = js.op[1].inst;
