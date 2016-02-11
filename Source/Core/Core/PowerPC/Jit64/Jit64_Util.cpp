@@ -14,6 +14,7 @@ void Jit64::SafeWrite(GPRRegister& reg_value, GPRRegister& reg_addr, GPRRegister
 
 	if (WriteClobbersRegValue(accessSize, swap))
 	{
+		// TODO: test for free register, otherwise swap back
 		auto scratch = regs.gpr.Borrow();
 		MOV(32, scratch, reg_value);
 		SafeWrite(scratch, reg_addr, offset, accessSize, swap, update);
@@ -112,7 +113,7 @@ void Jit64::SafeWrite(GPRRegister& reg_value, GPRRegister& reg_addr, GPRRegister
 	// If we're updating we can clobber address (transactionally)
 	if (update)
 	{
-		if (valueAddressShareRegister)
+		if (valueAddressShareRegister && val.HasPPCRegister())
 		{
 			auto scratch = regs.gpr.Borrow(); // can clobber RSCRATCH :/
 			MOV_sum(32, scratch, reg_addr, offset);
