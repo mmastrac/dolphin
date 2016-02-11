@@ -248,6 +248,8 @@ void EmuCodeBlock::SafeLoadToReg(X64Reg reg_value, const Gen::OpArg & opAddress,
 {
 	bool slowmem = (flags & SAFE_LOADSTORE_FORCE_SLOWMEM) != 0;
 
+	_assert_msg_(DYNA_REC, opAddress.IsSimpleReg() || opAddress.IsImm(), "Incorrect use of SafeLoadToReg (address isn't register or immediate)");
+
 	registersInUse[reg_value] = false;
 	if (jit->jo.fastmem && !(flags & SAFE_LOADSTORE_NO_FASTMEM) && !slowmem)
 	{
@@ -285,7 +287,6 @@ void EmuCodeBlock::SafeLoadToReg(X64Reg reg_value, const Gen::OpArg & opAddress,
 		return;
 	}
 
-	_assert_msg_(DYNA_REC, opAddress.IsSimpleReg(), "Incorrect use of SafeLoadToReg (address isn't register or immediate)");
 	X64Reg reg_addr = opAddress.GetSimpleReg();
 	if (offset)
 	{
