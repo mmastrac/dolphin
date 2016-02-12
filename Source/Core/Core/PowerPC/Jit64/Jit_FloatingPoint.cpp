@@ -25,32 +25,6 @@ alignas(16) static const u64 psAbsMask2[2]      = {0x7FFFFFFFFFFFFFFFULL, 0x7FFF
 alignas(16) static const u64 psGeneratedQNaN[2] = {0x7FF8000000000000ULL, 0x7FF8000000000000ULL};
 alignas(16) static const double half_qnan_and_s32_max[2] = {0x7FFFFFFF, -0x80000};
 
-X64Reg Jit64::fp_tri_op(int d, int a, int b, bool reversible, bool single, void (XEmitter::*avxOp)(X64Reg, X64Reg, const OpArg&),
-                        void (XEmitter::*sseOp)(X64Reg, const OpArg&), bool packed, bool preserve_inputs, bool roundRHS)
-{
-	fpr.Lock(d, a, b);
-	fpr.BindToRegister(d, d == a || d == b || !single);
-	X64Reg dest = preserve_inputs ? XMM1 : fpr.RX(d);
-	if (roundRHS)
-	{
-		if (d == a && !preserve_inputs)
-		{
-			Force25BitPrecision(XMM0, fpr.R(b), XMM1);
-			(this->*sseOp)(fpr.RX(d), R(XMM0));
-		}
-		else
-		{
-			Force25BitPrecision(dest, fpr.R(b), XMM0);
-			(this->*sseOp)(dest, fpr.R(a));
-		}
-	}
-	else
-	{
-		avx_op(avxOp, sseOp, dest, fpr.R(a), fpr.R(b), packed, reversible);
-	}
-	return dest;
-}
-
 // We can avoid calculating FPRF if it's not needed; every float operation resets it, so
 // if it's going to be clobbered in a future instruction before being read, we can just
 // not calculate it.
@@ -180,44 +154,76 @@ void Jit64::fp_arith(UGeckoInstruction inst)
 	FALLBACK_IF(inst.Rc);
 
 	int a = inst.FA;
-	int b = inst.FB;
-	int c = inst.FC;
+	int b = inst.SUBOP5 == 25 ? inst.FC : inst.FB;
 	int d = inst.FD;
-	int arg2 = inst.SUBOP5 == 25 ? c : b;
 
 	bool single = inst.OPCD == 4 || inst.OPCD == 59;
 	// If both the inputs are known to have identical top and bottom halves, we can skip the MOVDDUP at the end by
 	// using packed arithmetic instead.
 	bool packed = inst.OPCD == 4 || (inst.OPCD == 59 &&
 	                                 jit->js.op->fprIsDuplicated[a] &&
-	                                 jit->js.op->fprIsDuplicated[arg2]);
+	                                 jit->js.op->fprIsDuplicated[b]);
 	// Packed divides are slower than scalar divides on basically all x86, so this optimization isn't worth it in that case.
 	// Atoms (and a few really old CPUs) are also slower on packed operations than scalar ones.
 	if (inst.OPCD == 59 && (inst.SUBOP5 == 18 || cpu_info.bAtom))
 		packed = false;
 
-	bool round_input = single && !jit->js.op->fprIsSingle[inst.FC];
+	bool round_input = inst.SUBOP5 == 25 && single && !jit->js.op->fprIsSingle[b];
 	bool preserve_inputs = SConfig::GetInstance().bAccurateNaNs;
+	bool reversible = inst.SUBOP5 == 21 || inst.SUBOP5 == 25;
 
-	X64Reg dest = INVALID_REG;
+	void (XEmitter::*avxOp)(X64Reg, X64Reg, const OpArg&);
+	void (XEmitter::*sseOp)(X64Reg, const OpArg&);
+
 	switch (inst.SUBOP5)
 	{
-	case 18: dest = fp_tri_op(d, a, b, false, single, packed ? &XEmitter::VDIVPD : &XEmitter::VDIVSD,
-	                          packed ? &XEmitter::DIVPD : &XEmitter::DIVSD, packed, preserve_inputs); break;
-	case 20: dest = fp_tri_op(d, a, b, false, single, packed ? &XEmitter::VSUBPD : &XEmitter::VSUBSD,
-	                          packed ? &XEmitter::SUBPD : &XEmitter::SUBSD, packed, preserve_inputs); break;
-	case 21: dest = fp_tri_op(d, a, b, true, single, packed ? &XEmitter::VADDPD : &XEmitter::VADDSD,
-	                          packed ? &XEmitter::ADDPD : &XEmitter::ADDSD, packed, preserve_inputs); break;
-	case 25: dest = fp_tri_op(d, a, c, true, single, packed ? &XEmitter::VMULPD : &XEmitter::VMULSD,
-	                          packed ? &XEmitter::MULPD : &XEmitter::MULSD, packed, preserve_inputs, round_input); break;
+	case 18: // div
+		avxOp = packed ? &XEmitter::VDIVPD : &XEmitter::VDIVSD;
+		sseOp = packed ? &XEmitter::DIVPD : &XEmitter::DIVSD;
+		break;
+	case 20: // sub
+		avxOp = packed ? &XEmitter::VSUBPD : &XEmitter::VSUBSD;
+		sseOp = packed ? &XEmitter::SUBPD : &XEmitter::SUBSD;
+		break;
+	case 21: // add
+		avxOp = packed ? &XEmitter::VADDPD : &XEmitter::VADDSD;
+		sseOp = packed ? &XEmitter::ADDPD : &XEmitter::ADDSD;
+		break;
+	case 25: // mul
+		avxOp = packed ? &XEmitter::VMULPD : &XEmitter::VMULSD;
+		sseOp = packed ? &XEmitter::MULPD : &XEmitter::MULSD;
+		break;
 	default:
-		_assert_msg_(DYNA_REC, 0, "fp_arith WTF!!!");
+		 _assert_msg_(DYNA_REC, 0, "Unexpected SUBOP5");	
 	}
-	HandleNaNs(inst, fpr.RX(d), dest);
+
+	auto ra = regs.fpu.Lock(a), rb = regs.fpu.Lock(b), rd = regs.fpu.Lock(d);
+	auto xd = rd.BindWriteAndReadIf(d == a || d == b || !single);
+
+	auto dest = preserve_inputs ? regs.fpu.Borrow() : xd;
+	if (round_input)
+	{
+		if (d == a && !preserve_inputs)
+		{
+			auto xmm = regs.fpu.Borrow();
+			Force25BitPrecision(xmm, rb, regs.fpu.Borrow());
+			(this->*sseOp)(xd, R(xmm));
+		}
+		else
+		{
+			Force25BitPrecision(dest, rb, regs.fpu.Borrow());
+			(this->*sseOp)(dest, ra);
+		}
+	}
+	else
+	{
+		avx_op(avxOp, sseOp, dest, ra, rb, packed, reversible);
+	}
+
+	HandleNaNs(inst, xd, dest);
 	if (single)
-		ForceSinglePrecision(fpr.RX(d), fpr.R(d), packed, true);
-	SetFPRFIfNeeded(fpr.RX(d));
-	fpr.UnlockAll();
+		ForceSinglePrecision(xd, xd, packed, true);
+	SetFPRFIfNeeded(xd);
 }
 
 void Jit64::fmaddXX(UGeckoInstruction inst)
