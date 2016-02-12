@@ -238,28 +238,34 @@ void Jit64::fmaddXX(UGeckoInstruction inst)
 	               jit->js.op->fprIsDuplicated[b] &&
 	               jit->js.op->fprIsDuplicated[c]);
 
-	fpr.Lock(a, b, c, d);
+	auto ra = regs.fpu.Lock(a);
+	auto rb = regs.fpu.Lock(b);
+	auto rc = regs.fpu.Lock(c);
+	auto rd = regs.fpu.Lock(d);
+
+	auto xmm0 = regs.fpu.Borrow();
+	auto xmm1 = regs.fpu.Borrow();
 
 	switch(inst.SUBOP5)
 	{
 	case 14:
-		MOVDDUP(XMM1, fpr.R(c));
+		MOVDDUP(xmm1, rc);
 		if (round_input)
-			Force25BitPrecision(XMM1, R(XMM1), XMM0);
+			Force25BitPrecision(xmm1, R(xmm1), xmm0);
 		break;
 	case 15:
-		avx_op(&XEmitter::VSHUFPD, &XEmitter::SHUFPD, XMM1, fpr.R(c), fpr.R(c), 3);
+		avx_op(&XEmitter::VSHUFPD, &XEmitter::SHUFPD, xmm1, rc, rc, 3);
 		if (round_input)
-			Force25BitPrecision(XMM1, R(XMM1), XMM0);
+			Force25BitPrecision(xmm1, R(xmm1), xmm0);
 		break;
 	default:
 		bool special = inst.SUBOP5 == 30 && (!cpu_info.bFMA || Core::g_want_determinism);
-		X64Reg tmp1 = special ? XMM0 : XMM1;
-		X64Reg tmp2 = special ? XMM1 : XMM0;
+		X64Reg tmp1 = special ? xmm0 : xmm1;
+		X64Reg tmp2 = special ? xmm1 : xmm0;
 		if (single && round_input)
-			Force25BitPrecision(tmp1, fpr.R(c), tmp2);
+			Force25BitPrecision(tmp1, rc, tmp2);
 		else
-			MOVAPD(tmp1, fpr.R(c));
+			MOVAPD(tmp1, rc);
 		break;
 	}
 
@@ -273,22 +279,23 @@ void Jit64::fmaddXX(UGeckoInstruction inst)
 	{
 		// Statistics suggests b is a lot less likely to be unbound in practice, so
 		// if we have to pick one of a or b to bind, let's make it b.
-		fpr.BindToRegister(b, true, false);
+		auto xb = rb.Bind(BindMode::Read);
+
 		switch (inst.SUBOP5)
 		{
 		case 28: //msub
 			if (packed)
-				VFMSUB132PD(XMM1, fpr.RX(b), fpr.R(a));
+				VFMSUB132PD(xmm1, xb, ra);
 			else
-				VFMSUB132SD(XMM1, fpr.RX(b), fpr.R(a));
+				VFMSUB132SD(xmm1, xb, ra);
 			break;
 		case 14: //madds0
 		case 15: //madds1
 		case 29: //madd
 			if (packed)
-				VFMADD132PD(XMM1, fpr.RX(b), fpr.R(a));
+				VFMADD132PD(xmm1, xb, ra);
 			else
-				VFMADD132SD(XMM1, fpr.RX(b), fpr.R(a));
+				VFMADD132SD(xmm1, xb, ra);
 			break;
 			// PowerPC and x86 define NMADD/NMSUB differently
 			// x86: D = -A*C (+/-) B
@@ -296,67 +303,67 @@ void Jit64::fmaddXX(UGeckoInstruction inst)
 			// so we have to swap them; the ADD/SUB here isn't a typo.
 		case 30: //nmsub
 			if (packed)
-				VFNMADD132PD(XMM1, fpr.RX(b), fpr.R(a));
+				VFNMADD132PD(xmm1, xb, ra);
 			else
-				VFNMADD132SD(XMM1, fpr.RX(b), fpr.R(a));
+				VFNMADD132SD(xmm1, xb, ra);
 			break;
 		case 31: //nmadd
 			if (packed)
-				VFNMSUB132PD(XMM1, fpr.RX(b), fpr.R(a));
+				VFNMSUB132PD(xmm1, xb, ra);
 			else
-				VFNMSUB132SD(XMM1, fpr.RX(b), fpr.R(a));
+				VFNMSUB132SD(xmm1, xb, ra);
 			break;
 		}
 	}
 	else if (inst.SUBOP5 == 30) //nmsub
 	{
 		// We implement nmsub a little differently ((b - a*c) instead of -(a*c - b)), so handle it separately.
-		MOVAPD(XMM1, fpr.R(b));
+		MOVAPD(xmm1, rb);
 		if (packed)
 		{
-			MULPD(XMM0, fpr.R(a));
-			SUBPD(XMM1, R(XMM0));
+			MULPD(xmm0, ra);
+			SUBPD(xmm1, R(xmm0));
 		}
 		else
 		{
-			MULSD(XMM0, fpr.R(a));
-			SUBSD(XMM1, R(XMM0));
+			MULSD(xmm0, ra);
+			SUBSD(xmm1, R(xmm0));
 		}
 	}
 	else
 	{
 		if (packed)
 		{
-			MULPD(XMM1, fpr.R(a));
+			MULPD(xmm1, ra);
 			if (inst.SUBOP5 == 28) //msub
-				SUBPD(XMM1, fpr.R(b));
+				SUBPD(xmm1, rb);
 			else                   //(n)madd(s[01])
-				ADDPD(XMM1, fpr.R(b));
+				ADDPD(xmm1, rb);
 		}
 		else
 		{
-			MULSD(XMM1, fpr.R(a));
+			MULSD(xmm1, ra);
 			if (inst.SUBOP5 == 28)
-				SUBSD(XMM1, fpr.R(b));
+				SUBSD(xmm1, rb);
 			else
-				ADDSD(XMM1, fpr.R(b));
+				ADDSD(xmm1, rb);
 		}
 		if (inst.SUBOP5 == 31) //nmadd
-			PXOR(XMM1, M(packed ? psSignBits2 : psSignBits));
+			PXOR(xmm1, M(packed ? psSignBits2 : psSignBits));
 	}
-	fpr.BindToRegister(d, !single);
+
+	auto xd = rd.BindWriteAndReadIf(!single);
 	if (single)
 	{
-		HandleNaNs(inst, fpr.RX(d), XMM1);
-		ForceSinglePrecision(fpr.RX(d), fpr.R(d), packed, true);
+		HandleNaNs(inst, xd, xmm1);
+		ForceSinglePrecision(xd, xd, packed, true);
 	}
 	else
 	{
-		HandleNaNs(inst, XMM1, XMM1);
-		MOVSD(fpr.RX(d), R(XMM1));
+		HandleNaNs(inst, xmm1, xmm1);
+		MOVSD(xd, R(xmm1));
 	}
-	SetFPRFIfNeeded(fpr.RX(d));
-	fpr.UnlockAll();
+	SetFPRFIfNeeded(xd);
 }
 
 void Jit64::fsign(UGeckoInstruction inst)
@@ -369,26 +376,25 @@ void Jit64::fsign(UGeckoInstruction inst)
 	int b = inst.FB;
 	bool packed = inst.OPCD == 4;
 
-	fpr.Lock(b, d);
-	OpArg src = fpr.R(b);
-	fpr.BindToRegister(d, false);
+	auto rb = regs.fpu.Lock(b);
+	auto rd = regs.fpu.Lock(d);
+	auto xd = rd.Bind(BindMode::Write);
 
 	switch (inst.SUBOP10)
 	{
 	case 40: // neg
-		avx_op(&XEmitter::VPXOR, &XEmitter::PXOR, fpr.RX(d), src, M(packed ? psSignBits2 : psSignBits), packed);
+		avx_op(&XEmitter::VPXOR, &XEmitter::PXOR, xd, rb, M(packed ? psSignBits2 : psSignBits), packed);
 		break;
 	case 136: // nabs
-		avx_op(&XEmitter::VPOR, &XEmitter::POR, fpr.RX(d), src, M(packed ? psSignBits2 : psSignBits), packed);
+		avx_op(&XEmitter::VPOR, &XEmitter::POR, xd, rb, M(packed ? psSignBits2 : psSignBits), packed);
 		break;
 	case 264: // abs
-		avx_op(&XEmitter::VPAND, &XEmitter::PAND, fpr.RX(d), src, M(packed ? psAbsMask2 : psAbsMask), packed);
+		avx_op(&XEmitter::VPAND, &XEmitter::PAND, xd, rb, M(packed ? psAbsMask2 : psAbsMask), packed);
 		break;
 	default:
 		PanicAlert("fsign bleh");
 		break;
 	}
-	fpr.UnlockAll();
 }
 
 void Jit64::fselx(UGeckoInstruction inst)
@@ -404,35 +410,41 @@ void Jit64::fselx(UGeckoInstruction inst)
 
 	bool packed = inst.OPCD == 4; // ps_sel
 
-	fpr.Lock(a, b, c, d);
-	PXOR(XMM0, R(XMM0));
+	auto ra = regs.fpu.Lock(a);
+	auto rb = regs.fpu.Lock(b);
+	auto rc = regs.fpu.Lock(c);
+	auto rd = regs.fpu.Lock(d);
+
+	auto xmm0 = regs.fpu.Borrow();
+	auto xmm1 = regs.fpu.Borrow();
+
+	PXOR(xmm0, R(xmm0));
 	// This condition is very tricky; there's only one right way to handle both the case of
 	// negative/positive zero and NaN properly.
 	// (a >= -0.0 ? c : b) transforms into (0 > a ? b : c), hence the NLE.
 	if (packed)
-		CMPPD(XMM0, fpr.R(a), CMP_NLE);
+		CMPPD(xmm0, ra, CMP_NLE);
 	else
-		CMPSD(XMM0, fpr.R(a), CMP_NLE);
+		CMPSD(xmm0, ra, CMP_NLE);
 
 	if (cpu_info.bSSE4_1)
 	{
-		MOVAPD(XMM1, fpr.R(c));
-		BLENDVPD(XMM1, fpr.R(b));
+		MOVAPD(xmm1, rc);
+		BLENDVPD(xmm1, rb);
 	}
 	else
 	{
-		MOVAPD(XMM1, R(XMM0));
-		PAND(XMM0, fpr.R(b));
-		PANDN(XMM1, fpr.R(c));
-		POR(XMM1, R(XMM0));
+		MOVAPD(xmm1, R(xmm0));
+		PAND(xmm0, rb);
+		PANDN(xmm1, rc);
+		POR(xmm1, R(xmm0));
 	}
 
-	fpr.BindToRegister(d, !packed);
+	auto xd = rd.BindWriteAndReadIf(!packed);
 	if (packed)
-		MOVAPD(fpr.RX(d), R(XMM1));
+		MOVAPD(xd, R(xmm1));
 	else
-		MOVSD(fpr.RX(d), R(XMM1));
-	fpr.UnlockAll();
+		MOVSD(xd, R(xmm1));
 }
 
 void Jit64::fmrx(UGeckoInstruction inst)
@@ -447,26 +459,17 @@ void Jit64::fmrx(UGeckoInstruction inst)
 	if (d == b)
 		return;
 
-	fpr.Lock(b, d);
+	auto rb = regs.fpu.Lock(b);
+	auto rd = regs.fpu.Lock(d);
 
-	if (fpr.IsBound(d))
-	{
-		// We don't need to load d, but if it is loaded, we need to mark it as dirty.
-		fpr.BindToRegister(d);
-		// We have to use MOVLPD if b isn't loaded because "MOVSD reg, mem" sets the upper bits (64+)
-		// to zero and we don't want that.
-		if (!fpr.R(b).IsSimpleReg())
-			MOVLPD(fpr.RX(d), fpr.R(b));
-		else
-			MOVSD(fpr.R(d), fpr.RX(b));
-	}
+	auto xd = rd.Bind(BindMode::Write);
+
+	// We have to use MOVLPD if b isn't loaded because "MOVSD reg, mem" sets the upper bits (64+)
+	// to zero and we don't want that.
+	if (!rb.IsRegBound())
+		MOVLPD(xd, rb);
 	else
-	{
-		fpr.BindToRegister(b, true, false);
-		MOVSD(fpr.R(d), fpr.RX(b));
-	}
-
-	fpr.UnlockAll();
+		MOVSD(xd, rb);
 }
 
 void Jit64::FloatCompare(UGeckoInstruction inst, bool upper)
