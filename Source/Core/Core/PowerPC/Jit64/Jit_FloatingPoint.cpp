@@ -40,7 +40,7 @@ void Jit64::SetFPRFIfNeeded(X64Reg xmm)
 	}
 }
 
-void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm, X64Reg clobber)
+void Jit64::HandleNaNs(bool single, std::vector<FPURegister> allInputs, Gen::X64Reg xmm_out, Gen::X64Reg xmm)
 {
 	//                      | PowerPC  | x86
 	// ---------------------+----------+---------
@@ -57,18 +57,19 @@ void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm, X64Re
 		return;
 	}
 
-	_assert_(xmm != clobber);
-
-	std::vector<u32> inputs;
-	u32 a = inst.FA, b = inst.FB, c = inst.FC;
-	for (u32 i : {a, b, c})
+	// Uniquify allInputs
+	std::vector<OpArg> inputs;
+	std::set<int> foundRegs;
+	for (auto it = allInputs.begin(); it != allInputs.end(); it++)
 	{
-		if (!js.op->fregsIn[i])
+		if (foundRegs.find(it->PPCRegister()) != foundRegs.end())
 			continue;
-		if (std::find(inputs.begin(), inputs.end(), i) == inputs.end())
-			inputs.push_back(i);
+
+		foundRegs.insert(it->PPCRegister());
+		inputs.emplace(inputs.end(), *it);
 	}
-	if (inst.OPCD != 4)
+
+	if (single)
 	{
 		// not paired-single
 		UCOMISD(xmm, R(xmm));
@@ -76,9 +77,9 @@ void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm, X64Re
 		SwitchToFarCode();
 			SetJumpTarget(handle_nan);
 			std::vector<FixupBranch> fixups;
-			for (u32 x : inputs)
+			for (auto r : inputs)
 			{
-				MOVDDUP(xmm, fpr.R(x));
+				MOVDDUP(xmm, r);
 				UCOMISD(xmm, R(xmm));
 				fixups.push_back(J_CC(CC_P));
 			}
@@ -95,17 +96,18 @@ void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm, X64Re
 		std::reverse(inputs.begin(), inputs.end());
 		if (cpu_info.bSSE4_1)
 		{
+			auto clobber = regs.fpu.BorrowAnyBut(BitSet32{ XMM0 }); // BLENDVPD implicitly uses XMM0
+		
 			avx_op(&XEmitter::VCMPPD, &XEmitter::CMPPD, clobber, R(xmm), R(xmm), CMP_UNORD);
 			PTEST(clobber, R(clobber));
 			FixupBranch handle_nan = J_CC(CC_NZ, true);
 			SwitchToFarCode();
 				SetJumpTarget(handle_nan);
-				_assert_msg_(DYNA_REC, clobber == XMM0, "BLENDVPD implicitly uses XMM0");
 				BLENDVPD(xmm, M(psGeneratedQNaN));
-				for (u32 x : inputs)
+				for (auto r : inputs)
 				{
-					avx_op(&XEmitter::VCMPPD, &XEmitter::CMPPD, clobber, fpr.R(x), fpr.R(x), CMP_UNORD);
-					BLENDVPD(xmm, fpr.R(x));
+					avx_op(&XEmitter::VCMPPD, &XEmitter::CMPPD, clobber, r, r, CMP_UNORD);
+					BLENDVPD(xmm, r);
 				}
 				FixupBranch done = J(true);
 			SwitchToNearCode();
@@ -113,13 +115,15 @@ void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm, X64Re
 		}
 		else
 		{
+			auto clobber = regs.fpu.Borrow();
+
 			// SSE2 fallback
-			X64Reg tmp = fpr.GetFreeXReg();
-			fpr.FlushLockX(tmp);
+			auto tmp = regs.fpu.Borrow();
 			MOVAPD(clobber, R(xmm));
 			CMPPD(clobber, R(clobber), CMP_UNORD);
-			MOVMSKPD(RSCRATCH, R(clobber));
-			TEST(32, R(RSCRATCH), R(RSCRATCH));
+			auto scratch = regs.gpr.Borrow();
+			MOVMSKPD(scratch, R(clobber));
+			TEST(32, scratch, scratch);
 			FixupBranch handle_nan = J_CC(CC_NZ, true);
 			SwitchToFarCode();
 				SetJumpTarget(handle_nan);
@@ -128,19 +132,18 @@ void Jit64::HandleNaNs(UGeckoInstruction inst, X64Reg xmm_out, X64Reg xmm, X64Re
 				PAND(tmp, M(psGeneratedQNaN));
 				POR(tmp, R(clobber));
 				MOVAPD(xmm, R(tmp));
-				for (u32 x : inputs)
+				for (auto r : inputs)
 				{
-					MOVAPD(clobber, fpr.R(x));
+					MOVAPD(clobber, r);
 					CMPPD(clobber, R(clobber), CMP_ORD);
 					MOVAPD(tmp, R(clobber));
-					PANDN(clobber, fpr.R(x));
+					PANDN(clobber, r);
 					PAND(xmm, R(tmp));
 					POR(xmm, R(clobber));
 				}
 				FixupBranch done = J(true);
 			SwitchToNearCode();
 			SetJumpTarget(done);
-			fpr.UnlockX(tmp);
 		}
 	}
 	if (xmm_out != xmm)
@@ -198,8 +201,8 @@ void Jit64::fp_arith(UGeckoInstruction inst)
 	}
 
 	auto ra = regs.fpu.Lock(a), rb = regs.fpu.Lock(b), rd = regs.fpu.Lock(d);
-	auto xd = rd.BindWriteAndReadIf(d == a || d == b || !single);
 
+	auto xd = rd.BindWriteAndReadIf(d == a || d == b || !single);
 	auto dest = preserve_inputs ? regs.fpu.Borrow() : xd;
 	if (round_input)
 	{
@@ -220,7 +223,7 @@ void Jit64::fp_arith(UGeckoInstruction inst)
 		avx_op(avxOp, sseOp, dest, ra, rb, packed, reversible);
 	}
 
-	HandleNaNs(inst, xd, dest);
+	HandleNaNs(true, std::vector<FPURegister>{ ra, rb }, xd, dest);
 	if (single)
 		ForceSinglePrecision(xd, xd, packed, true);
 	SetFPRFIfNeeded(xd);
@@ -358,18 +361,20 @@ void Jit64::fmaddXX(UGeckoInstruction inst)
 			PXOR(xmm1, M(packed ? psSignBits2 : psSignBits));
 	}
 
-	auto xd = rd.BindWriteAndReadIf(!single);
 	if (single)
 	{
-		HandleNaNs(inst, xd, xmm1);
+		auto xd = rd.Bind(BindMode::ReadWrite);
+		HandleNaNs(true, std::vector<FPURegister>{ ra, rb, rc }, xd, xmm1);
 		ForceSinglePrecision(xd, xd, packed, true);
+		SetFPRFIfNeeded(xd);
 	}
 	else
 	{
-		HandleNaNs(inst, xmm1, xmm1);
+		HandleNaNs(false, std::vector<FPURegister>{ ra, rb, rc }, xmm1, xmm1);
+		auto xd = rd.Bind(BindMode::Write);
 		MOVSD(xd, R(xmm1));
+		SetFPRFIfNeeded(xd);
 	}
-	SetFPRFIfNeeded(xd);
 }
 
 void Jit64::fsign(UGeckoInstruction inst)
@@ -421,7 +426,7 @@ void Jit64::fselx(UGeckoInstruction inst)
 	auto rc = regs.fpu.Lock(c);
 	auto rd = regs.fpu.Lock(d);
 
-	auto xmm0 = regs.fpu.Borrow();
+	auto xmm0 = regs.fpu.Borrow(XMM0); // blendvpd will clobber XMM0 so we have to be careful
 	auto xmm1 = regs.fpu.Borrow();
 
 	PXOR(xmm0, R(xmm0));
@@ -478,8 +483,12 @@ void Jit64::fmrx(UGeckoInstruction inst)
 		MOVSD(xd, rb);
 }
 
-void Jit64::FloatCompare(UGeckoInstruction inst, bool upper)
+void Jit64::fcmpX(UGeckoInstruction inst)
 {
+	INSTRUCTION_START
+	JITDISABLE(bJITFloatingPointOff);
+
+	bool upper = inst.OPCD == 4 && !!(inst.SUBOP10 & 64); // ps_cmpX1
 	bool fprf = SConfig::GetInstance().bFPRF && js.op->wantsFPRF;
 	//bool ordered = !!(inst.SUBOP10 & 32);
 	int a = inst.FA;
@@ -501,22 +510,25 @@ void Jit64::FloatCompare(UGeckoInstruction inst, bool upper)
 		output[3 - (next.CRBB & 3)] |= 1 << dst;
 	}
 
-	fpr.Lock(a, b);
-	fpr.BindToRegister(b, true, false);
+	auto ra = regs.fpu.Lock(a);
+	auto rb = regs.fpu.Lock(b);
+	auto xb = rb.Bind(BindMode::Read);
 
 	if (fprf)
 		AND(32, PPCSTATE(fpscr), Imm32(~FPRF_MASK));
 
 	if (upper)
 	{
-		fpr.BindToRegister(a, true, false);
-		MOVHLPS(XMM0, fpr.RX(a));
-		MOVHLPS(XMM1, fpr.RX(b));
-		UCOMISD(XMM1, R(XMM0));
+		auto xa = ra.Bind(BindMode::Read);
+		auto xmm0 = regs.fpu.Borrow();
+		auto xmm1 = regs.fpu.Borrow();
+		MOVHLPS(xmm0, xa);
+		MOVHLPS(xmm1, xb);
+		UCOMISD(xmm1, R(xmm0));
 	}
 	else
 	{
-		UCOMISD(fpr.RX(b), fpr.R(a));
+		UCOMISD(xb, ra);
 	}
 
 	FixupBranch pNaN, pLesser, pGreater;
@@ -538,14 +550,15 @@ void Jit64::FloatCompare(UGeckoInstruction inst, bool upper)
 		pGreater = J_CC(CC_B);
 	}
 
-	MOV(64, R(RSCRATCH), Imm64(PPCCRToInternal(output[CR_EQ_BIT])));
+	auto scratch = regs.gpr.Borrow();
+	MOV(64, scratch, Imm64(PPCCRToInternal(output[CR_EQ_BIT])));
 	if (fprf)
 		OR(32, PPCSTATE(fpscr), Imm32(CR_EQ << FPRF_SHIFT));
 
 	continue1 = J();
 
 	SetJumpTarget(pNaN);
-	MOV(64, R(RSCRATCH), Imm64(PPCCRToInternal(output[CR_SO_BIT])));
+	MOV(64, scratch, Imm64(PPCCRToInternal(output[CR_SO_BIT])));
 	if (fprf)
 		OR(32, PPCSTATE(fpscr), Imm32(CR_SO << FPRF_SHIFT));
 
@@ -554,13 +567,13 @@ void Jit64::FloatCompare(UGeckoInstruction inst, bool upper)
 		continue2 = J();
 
 		SetJumpTarget(pGreater);
-		MOV(64, R(RSCRATCH), Imm64(PPCCRToInternal(output[CR_GT_BIT])));
+		MOV(64, scratch, Imm64(PPCCRToInternal(output[CR_GT_BIT])));
 		if (fprf)
 			OR(32, PPCSTATE(fpscr), Imm32(CR_GT << FPRF_SHIFT));
 		continue3 = J();
 
 		SetJumpTarget(pLesser);
-		MOV(64, R(RSCRATCH), Imm64(PPCCRToInternal(output[CR_LT_BIT])));
+		MOV(64, scratch, Imm64(PPCCRToInternal(output[CR_LT_BIT])));
 		if (fprf)
 			OR(32, PPCSTATE(fpscr), Imm32(CR_LT << FPRF_SHIFT));
 	}
@@ -572,16 +585,7 @@ void Jit64::FloatCompare(UGeckoInstruction inst, bool upper)
 		SetJumpTarget(continue3);
 	}
 
-	MOV(64, PPCSTATE(cr_val[crf]), R(RSCRATCH));
-	fpr.UnlockAll();
-}
-
-void Jit64::fcmpX(UGeckoInstruction inst)
-{
-	INSTRUCTION_START
-	JITDISABLE(bJITFloatingPointOff);
-
-	FloatCompare(inst);
+	MOV(64, PPCSTATE(cr_val[crf]), scratch);
 }
 
 void Jit64::fctiwx(UGeckoInstruction inst)
