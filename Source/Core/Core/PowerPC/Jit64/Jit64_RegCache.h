@@ -310,7 +310,7 @@ public:
 
 	// Sync the current value to the default location but otherwise doesn't move the
 	// register.
-	void Sync();
+	OpArg Sync();
     
     // TODO: Remove this
     void Flush();

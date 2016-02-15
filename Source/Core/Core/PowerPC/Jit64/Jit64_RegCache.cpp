@@ -247,10 +247,12 @@ void Any<T>::RealizeLock()
 }
 
 template <Type T>
-void Any<T>::Sync()
+OpArg Any<T>::Sync()
 {
 	RealizeLock();
 	m_reg->StoreFromRegister(this->m_data.reg, FlushMode::FlushMaintainState);
+	// Required by ExtractToReg in Jit_Integer (need to get rid of that)
+	return m_reg->GetDefaultLocation(this->m_data.reg);
 }
 
 template <Type T>
