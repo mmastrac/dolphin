@@ -291,8 +291,7 @@ void Jit64::reg_imm(UGeckoInstruction inst)
 		}
 		else if (inst.SIMM_16 == 0 && d != a && a != 0)
 		{
-			auto xd = regs.gpr.Lock(d).Bind(BindMode::Write);
-			MOV(32, xd, ra);
+			regs.gpr.Lock(d).SetFrom(ra);
 		}
 		else
 		{
