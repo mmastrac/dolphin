@@ -290,22 +290,23 @@ void Jit64::fmaddXX(UGeckoInstruction inst)
 		// Statistics suggests b is a lot less likely to be unbound in practice, so
 		// if we have to pick one of a or b to bind, let's make it b.
 		auto xb = rb.Bind(BindMode::Read);
+		auto xr = b == a ? xb : ra;
 
 		switch (inst.SUBOP5)
 		{
 		case 28: //msub
 			if (packed)
-				VFMSUB132PD(xmm1, xb, ra);
+				VFMSUB132PD(xmm1, xb, xr);
 			else
-				VFMSUB132SD(xmm1, xb, ra);
+				VFMSUB132SD(xmm1, xb, xr);
 			break;
 		case 14: //madds0
 		case 15: //madds1
 		case 29: //madd
 			if (packed)
-				VFMADD132PD(xmm1, xb, ra);
+				VFMADD132PD(xmm1, xb, xr);
 			else
-				VFMADD132SD(xmm1, xb, ra);
+				VFMADD132SD(xmm1, xb, xr);
 			break;
 			// PowerPC and x86 define NMADD/NMSUB differently
 			// x86: D = -A*C (+/-) B
@@ -313,15 +314,15 @@ void Jit64::fmaddXX(UGeckoInstruction inst)
 			// so we have to swap them; the ADD/SUB here isn't a typo.
 		case 30: //nmsub
 			if (packed)
-				VFNMADD132PD(xmm1, xb, ra);
+				VFNMADD132PD(xmm1, xb, xr);
 			else
-				VFNMADD132SD(xmm1, xb, ra);
+				VFNMADD132SD(xmm1, xb, xr);
 			break;
 		case 31: //nmadd
 			if (packed)
-				VFNMSUB132PD(xmm1, xb, ra);
+				VFNMSUB132PD(xmm1, xb, xr);
 			else
-				VFNMSUB132SD(xmm1, xb, ra);
+				VFNMSUB132SD(xmm1, xb, xr);
 			break;
 		}
 	}
