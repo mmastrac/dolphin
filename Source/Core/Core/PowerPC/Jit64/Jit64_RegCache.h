@@ -463,14 +463,14 @@ protected:
 			}
 		}
 	}
-
-public:
 	// TODO: not public
 	void Flush();
 
 	// TODO: not public
 	void Sync();
 
+
+public:
 	// Borrows a host register. If 'which' is omitted, an appropriate one is chosen.
 	// Note that the register that is actually borrowed is indeterminate up until
 	// the actual point where a method is called that would require it to be

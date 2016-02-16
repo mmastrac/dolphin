@@ -26,7 +26,6 @@
 #include "Core/PowerPC/Jit64/Jit.h"
 #include "Core/PowerPC/Jit64/Jit64_Tables.h"
 #include "Core/PowerPC/Jit64/JitAsm.h"
-#include "Core/PowerPC/Jit64/JitRegCache.h"
 #include "Core/PowerPC/JitCommon/Jit_Util.h"
 #if defined(_DEBUG) || defined(DEBUGFAST)
 #include "Common/GekkoDisassembler.h"
@@ -239,8 +238,7 @@ void Jit64::Shutdown()
 
 void Jit64::FallBackToInterpreter(UGeckoInstruction inst)
 {
-	gpr.Flush();
-	fpr.Flush();
+	regs.Flush();
 	if (js.op->opinfo->flags & FL_ENDBLOCK)
 	{
 		MOV(32, PPCSTATE(pc), Imm32(js.compilerPC));
@@ -272,8 +270,7 @@ void Jit64::FallBackToInterpreter(UGeckoInstruction inst)
 
 void Jit64::HLEFunction(UGeckoInstruction _inst)
 {
-	gpr.Flush();
-	fpr.Flush();
+	regs.Flush();
 	ABI_PushRegistersAndAdjustStack({}, 0);
 	ABI_CallFunctionCC((void*)&HLE::Execute, js.compilerPC, _inst.hex);
 	ABI_PopRegistersAndAdjustStack({}, 0);
@@ -715,9 +712,8 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 				                                                         ProcessorInterface::INT_CAUSE_PE_TOKEN |
 				                                                         ProcessorInterface::INT_CAUSE_PE_FINISH));
 				FixupBranch noCPInt = J_CC(CC_Z, true);
-
-				gpr.Flush(FLUSH_MAINTAIN_STATE);
-				fpr.Flush(FLUSH_MAINTAIN_STATE);
+				auto branch = regs.Branch();
+				branch.Flush();
 
 				MOV(32, PPCSTATE(pc), Imm32(ops[i].address));
 				WriteExternalExceptionExit();
@@ -758,8 +754,8 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 
 				SwitchToFarCode();
 					SetJumpTarget(b1);
-					gpr.Flush(FLUSH_MAINTAIN_STATE);
-					fpr.Flush(FLUSH_MAINTAIN_STATE);
+					auto branch = regs.Branch();
+					branch.Flush();
 
 					// If a FPU exception occurs, the exception handler will read
 					// from PC.  Update PC with the latest value in case that happens.
@@ -776,8 +772,7 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 				// Turn off block linking if there are breakpoints so that the Step Over command does not link this block.
 				jo.enableBlocklink = false;
 
-				gpr.Flush();
-				fpr.Flush();
+				regs.Flush();
 
 				MOV(32, PPCSTATE(pc), Imm32(ops[i].address));
 				ABI_PushRegistersAndAdjustStack({}, 0);
@@ -825,14 +820,8 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 						exceptionHandlerAtLoc[js.fastmemLoadStore] = GetWritableCodePtr();
 					}
 
-					BitSet32 gprToFlush = BitSet32::AllTrue(32);
-					BitSet32 fprToFlush = BitSet32::AllTrue(32);
-					if (js.revertGprLoad >= 0)
-						gprToFlush[js.revertGprLoad] = false;
-					if (js.revertFprLoad >= 0)
-						fprToFlush[js.revertFprLoad] = false;
-					gpr.Flush(FLUSH_MAINTAIN_STATE, gprToFlush);
-					fpr.Flush(FLUSH_MAINTAIN_STATE, fprToFlush);
+					auto branch = regs.Branch();
+					branch.Rollback();
 
 					// If a memory exception occurs, the exception handler will read
 					// from PC.  Update PC with the latest value in case that happens.
@@ -840,6 +829,9 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 					WriteExceptionExit();
 				SwitchToNearCode();
 			}
+
+			// Marks all transactions as successful
+			regs.Commit();
 
 			// If we have a register that will never be used again, flush it.
 			regs.gpr.FlushBatch(~ops[i].gprInUse);
@@ -865,8 +857,7 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 
 	if (code_block.m_broken)
 	{
-		gpr.Flush();
-		fpr.Flush();
+		regs.Flush();
 		WriteExit(nextPC);
 	}
 

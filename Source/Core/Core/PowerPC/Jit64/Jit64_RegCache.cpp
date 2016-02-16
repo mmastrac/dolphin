@@ -468,6 +468,7 @@ void RegisterClassBase<T>::Flush()
 	for (auto& reg : m_regs)
 	{
 		int i = &reg - &m_regs[0];
+
 		// We flush locked registers here because this is considered explicit
 		if (reg.away)
 		{
@@ -671,7 +672,8 @@ void Registers::Commit()
 
 void Registers::Rollback()
 {
-	// _assert_msg_(REGCACHE, 0, "TODO Rollback");	
+	gpr.Sync();
+	fpu.Sync();
 }
 
 
