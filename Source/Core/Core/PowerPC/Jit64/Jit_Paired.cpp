@@ -132,9 +132,9 @@ void Jit64::ps_mergeXX(UGeckoInstruction inst)
 	int a = inst.FA;
 	int b = inst.FB;
 	auto rd = regs.fpu.Lock(d);
-	auto ra = regs.fpu.Lock(a);
-	auto rb = regs.fpu.Lock(b);
 	auto xd = rd.BindWriteAndReadIf(d == a || d == b);
+	auto ra = a == d ? xd : regs.fpu.Lock(a);
+	auto rb = b == d ? xd : regs.fpu.Lock(b);
 
 	switch (inst.SUBOP10)
 	{
