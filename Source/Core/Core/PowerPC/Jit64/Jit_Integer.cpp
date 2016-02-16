@@ -1061,6 +1061,10 @@ void Jit64::mullwx(UGeckoInstruction inst)
 			auto& src = ra.IsImm() ? rb : ra;
 			MultiplyImmediate(imm, src, xd, inst.OE);
 		}
+		else if (d == a && d == b)
+		{
+			IMUL(32, xd, xd);
+		}
 		else if (d == a)
 		{
 			IMUL(32, xd, rb);
