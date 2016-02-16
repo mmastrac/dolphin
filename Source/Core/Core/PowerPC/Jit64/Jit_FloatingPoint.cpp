@@ -389,9 +389,9 @@ void Jit64::fsign(UGeckoInstruction inst)
 	int b = inst.FB;
 	bool packed = inst.OPCD == 4;
 
-	auto rb = regs.fpu.Lock(b);
 	auto rd = regs.fpu.Lock(d);
-	auto xd = rd.Bind(BindMode::Write);
+	auto xd = rd.BindWriteAndReadIf(d == b);
+	auto rb = b == d ? xd : regs.fpu.Lock(b);
 
 	switch (inst.SUBOP10)
 	{
