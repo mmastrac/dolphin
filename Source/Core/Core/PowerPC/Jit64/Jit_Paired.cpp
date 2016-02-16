@@ -117,7 +117,7 @@ void Jit64::ps_muls(UGeckoInstruction inst)
 	MULPD(tmp, ra);
 	auto xd = rd.Bind(BindMode::Write);
 	HandleNaNs(true, std::vector<FPURegister>{ ra, rc }, xd, tmp);
-	ForceSinglePrecision(xd, rd);
+	ForceSinglePrecision(xd, xd);
 	SetFPRFIfNeeded(xd);
 }
 
