@@ -27,6 +27,30 @@ Native<T> Any<T>::Bind(Jit64Reg::BindMode mode)
 }
 
 template <Type T>
+Native<T> Any<T>::BorrowCopy()
+{
+	// When we implement single tracking for FPU register, this will be valid
+	_assert_msg_(REGCACHE, T == Type::GPR, "BorrowCopy only implemented for GPRs");
+
+	// TODO: If we know that the bound register we are borrowing a copy of is
+	// no longer used, we could rename instead.
+	RealizeLock();
+	X64Reg other = m_reg->GetFreeXReg(BitSet32{0});
+
+	if (IsRegBound())
+	{
+		m_reg->CopyRegister(other, Location().GetSimpleReg());
+	}
+	else
+	{
+		m_reg->LoadRegister(other, Location());
+	}
+
+	RegisterData data = { .type = RegisterType::Borrow, .xreg = m_data.xreg, .disallowed=BitSet32{0} };
+	return Native<T>(m_reg, data);
+}
+
+template <Type T>
 void Any<T>::LoadIfNotImmediate()
 {
 	RealizeLock();
@@ -70,7 +94,7 @@ void Any<T>::Lock(RegisterData& data)
 		switch (data.mode)
 		{
 		case BindMode::Reuse:
-			_assert_msg_(REGCACHE, IsRegBound(), "Must be register-bound to reuse a bind");
+			_assert_msg_(REGCACHE, IsRegBound(), "Must already be register-bound to reuse a bind");
 			data.xreg = Location().GetSimpleReg();
 			break;
 		case BindMode::Read:
@@ -133,6 +157,27 @@ void Any<T>::Lock(RegisterData& data)
 		DEBUG_LOG(REGCACHE, "++ Lock %zu (count = %d)", data.reg, ppc.locked);
 		break;
 	}
+	}
+}
+
+template <Type T>
+void Any<T>::SetFrom(Any<T> other)
+{
+	// When we implement single tracking for FPU register, this will be valid
+	_assert_msg_(REGCACHE, T == Type::GPR, "SetFrom only implemented for GPRs");
+
+	// TODO: If we know that the bound register we are copying is no longer
+	// used, we could rename instead.
+
+	auto bind = Bind(BindMode::Write);
+	if (other.IsRegBound())
+	{
+		auto reg = other.Bind(BindMode::Reuse);
+		m_reg->CopyRegister(bind, reg);
+	}
+	else
+	{
+		m_reg->LoadRegister(bind, other);
 	}
 }
 

@@ -326,6 +326,28 @@ public:
 	// Shortcut for common bind pattern
 	Native<T> BindWriteAndReadIf(bool cond) { return Bind(cond ? BindMode::ReadWrite : BindMode::Write); }
 
+	// Borrows a copy of a this register in a scratch register. The copy is
+	// always in a register, no matter whether the current register is an
+	// immediate, has been spilled back to memory, or lives in a register.
+	// To avoid weird realization issues, both this register and the copy
+	// are immediately realized.
+	//
+	// This is only valid for GPR-type registers.
+	Native<T> BorrowCopy();
+
+	// Sets the value of this register equal to the value of the other
+	// register. If both registers live in memory, implicitly binds this
+	// register as if Bind() had been called. If this register was already
+	// bound, it is marked as dirty.
+	//
+	// If this register is set to itself, an assertion is triggered. While we
+	// could handle this, it requires every call site to correctly identify
+	// whether an already-bound register should be dirtied in the case where
+	// it is set to itself.
+	//
+	// This is only valid for GPR-type registers.
+	void SetFrom(Any<T> other);
+
 	// Any register, bound or not, can be used as an OpArg. If not bound, this will return
 	// a pointer into PPCSTATE.
 	operator Gen::OpArg();
@@ -428,6 +450,7 @@ protected:
 	virtual const std::vector<X64Reg>& GetScratchAllocationOrder() const = 0;
 	virtual void LoadRegister(X64Reg newLoc, const OpArg& location) = 0;
 	virtual void StoreRegister(const OpArg& newLoc, const OpArg& location) = 0;
+	virtual void CopyRegister(X64Reg newLoc, X64Reg location) = 0;
 	virtual OpArg GetDefaultLocation(reg_t reg) const = 0;
 	virtual BitSet32 GetRegUtilization() const = 0;
 	virtual BitSet32 GetRegsIn(int i) const = 0;
@@ -521,6 +544,10 @@ protected:
 	{
 		m_emit->MOVAPD(newLoc, location.GetSimpleReg());
 	}
+	virtual void CopyRegister(X64Reg newLoc, X64Reg location)
+	{
+		_assert_msg_(REGCACHE, 0, "Unimplemented");
+	}
 	virtual OpArg GetDefaultLocation(reg_t reg) const { return PPCSTATE(ps[reg][0]); }
 	virtual BitSet32 GetRegUtilization() const { return m_jit->js.op->fprInXmm; }
 	virtual BitSet32 GetRegsIn(int i) const { return m_jit->js.op[i].fregsIn; }
@@ -543,6 +570,10 @@ protected:
 	virtual void StoreRegister(const OpArg& newLoc, const OpArg& location)
 	{
 		m_emit->MOV(32, newLoc, location);
+	}
+	virtual void CopyRegister(X64Reg newLoc, X64Reg location)
+	{
+		m_emit->MOV(32, R(newLoc), R(location));
 	}
 	virtual OpArg GetDefaultLocation(reg_t reg) const { return PPCSTATE(gpr[reg]); }
 	virtual BitSet32 GetRegUtilization() const { return m_jit->js.op->gprInReg; }
