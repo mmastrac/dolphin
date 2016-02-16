@@ -530,7 +530,7 @@ void Jit64::fcmpX(UGeckoInstruction inst)
 	}
 	else
 	{
-		UCOMISD(xb, ra);
+		UCOMISD(xb, a == b ? xb : ra);
 	}
 
 	FixupBranch pNaN, pLesser, pGreater;
