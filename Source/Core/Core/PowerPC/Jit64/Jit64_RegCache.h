@@ -77,7 +77,8 @@ enum class BindMode
 	// depending on the method called on Registers. This will implicitly bind the guest
 	// register to a native register for the entire scope of the transaction. Attempting to
 	// flush, sync or rebind this register before rollback/commit is an error.
-	WriteTransaction,
+	ReadWriteTransactional,
+	WriteTransactional,
 	// Asserts that the register is already loaded -- doesn't load or mark it as dirty
 	Reuse,
 };

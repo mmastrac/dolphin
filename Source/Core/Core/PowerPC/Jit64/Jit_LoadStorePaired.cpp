@@ -49,7 +49,7 @@ void Jit64::psq_stXX(UGeckoInstruction inst)
 
 	if (update)
 	{
-		auto xa = ra.Bind(BindMode::WriteTransaction);
+		auto xa = ra.Bind(BindMode::WriteTransactional);
 		MOV(32, xa, scratch_extra);
 	}
 
@@ -134,7 +134,7 @@ void Jit64::psq_lXX(UGeckoInstruction inst)
 
 	if (update)
 	{
-		auto xa = ra.Bind(BindMode::WriteTransaction);
+		auto xa = ra.Bind(BindMode::WriteTransactional);
 		MOV(32, xa, scratch_extra);
 	}
 

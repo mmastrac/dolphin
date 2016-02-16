@@ -14,6 +14,12 @@ namespace Jit64Reg
 template <Type T>
 Native<T> Any<T>::Bind(Jit64Reg::BindMode mode)
 {
+	// Transactions are a no-op when memcheck is off
+	if (mode == BindMode::ReadWriteTransactional && !m_reg->m_jit->jo.memcheck)
+		mode = BindMode::ReadWrite;
+	if (mode == BindMode::WriteTransactional && !m_reg->m_jit->jo.memcheck)
+		mode = BindMode::Write;
+
 	_assert_msg_(REGCACHE, m_data.type == RegisterType::PPC || m_data.type == RegisterType::Bind, "Only PPC registers can be bound");
 	RealizeLock();
 	RegisterData data = { .type = RegisterType::Bind, .mode = mode, .reg = m_data.reg };
@@ -74,8 +80,9 @@ void Any<T>::Lock(RegisterData& data)
 			data.xreg = m_reg->BindToRegister(data.reg, true, true);
 			break;
 		case BindMode::Write:
-		case BindMode::WriteTransaction:
 			data.xreg = m_reg->BindToRegister(data.reg, false, true);
+			break;
+		case BindMode::ReadWriteTransactional:
 			break;
 		default:
 			_assert_msg_(REGCACHE, 0, "Unhandled bind %d", data.mode);
