@@ -1468,7 +1468,7 @@ void Jit64::arithcx(UGeckoInstruction inst)
 		{
 			// special case, because sub isn't reversible
 			auto scratch = regs.gpr.Borrow();
-			MOV(32, scratch, ra);
+			MOV(32, scratch, xd);
 			MOV(32, xd, rb);
 			SUB(32, xd, scratch);
 		}
