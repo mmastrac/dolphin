@@ -719,7 +719,7 @@ void Jit64::boolX(UGeckoInstruction inst)
 			if (cpu_info.bBMI1 && rb.IsRegBound() && !rs.IsImm())
 			{
 				auto xb = rb.Bind(BindMode::Reuse);
-				ANDN(32, xa, xb, rs);
+				ANDN(32, xa, xb, a == s ? xa : rs);
 			}
 			else if (a == b)
 			{
