@@ -643,7 +643,7 @@ void Jit64::frspx(UGeckoInstruction inst)
 
 	auto rb = regs.fpu.Lock(b), rd = regs.fpu.Lock(d);
 	auto xd = rd.BindWriteAndReadIf(b == d);
-	ForceSinglePrecision(xd, rb, packed, true);
+	ForceSinglePrecision(xd, d == b ? xd : rb, packed, true);
 	SetFPRFIfNeeded(xd);
 }
 
