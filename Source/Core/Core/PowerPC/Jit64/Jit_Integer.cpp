@@ -1345,7 +1345,10 @@ void Jit64::addx(UGeckoInstruction inst)
 	else if ((d == a) || (d == b))
 	{
 		auto xd = rd.Bind(BindMode::ReadWrite);
-		ADD(32, xd, d == a ? rb : ra);
+		if (d == a && d == b)
+			ADD(32, xd, xd);
+		else
+			ADD(32, xd, d == a ? rb : ra);
 		if (inst.OE)
 			GenerateOverflow();
 	}
