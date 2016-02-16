@@ -1944,16 +1944,16 @@ void Jit64::cntlzwx(UGeckoInstruction inst)
 		auto xa = ra.BindWriteAndReadIf(a == s);
 		if (cpu_info.bLZCNT)
 		{
-			LZCNT(32, xa, rs);
+			LZCNT(32, xa, a == s ? xa : rs);
 			needs_test = true;
 		}
 		else
 		{
-			BSR(32, xa, rs);
+			BSR(32, xa, a == s ? xa : rs);
 			FixupBranch gotone = J_CC(CC_NZ);
-			MOV(32, ra, Imm32(63));
+			MOV(32, xa, Imm32(63));
 			SetJumpTarget(gotone);
-			XOR(32, ra, Imm8(0x1f));  // flip order
+			XOR(32, xa, Imm8(0x1f));  // flip order
 		}
 	}
 
