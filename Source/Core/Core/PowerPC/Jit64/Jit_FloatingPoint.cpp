@@ -199,9 +199,11 @@ void Jit64::fp_arith(UGeckoInstruction inst)
 		 _assert_msg_(DYNA_REC, 0, "Unexpected SUBOP5");	
 	}
 
-	auto ra = regs.fpu.Lock(a), rb = regs.fpu.Lock(b), rd = regs.fpu.Lock(d);
-
+	auto rd = regs.fpu.Lock(d);
 	auto xd = rd.BindWriteAndReadIf(d == a || d == b || !single);
+	auto ra = a == d ? xd : regs.fpu.Lock(a);
+	auto rb = b == d ? xd : regs.fpu.Lock(b);
+
 	auto dest = preserve_inputs ? regs.fpu.Borrow() : xd;
 	if (round_input)
 	{
