@@ -10,7 +10,8 @@ void Jit64::SafeWrite(GPRRegister& reg_value, GPRRegister& reg_addr, GPRRegister
 {
 	_assert_msg_(DYNAREC, accessSize == 8 || accessSize == 16 || accessSize == 32 || accessSize == 64, "Invalid write size: %d", accessSize);
 
-	bool valueAddressShareRegister = reg_value.HasPPCRegister() && reg_addr.HasPPCRegister() && reg_value.PPCRegister() == reg_addr.PPCRegister();
+	bool valueAddressShareRegister = reg_value.IsAliasOf(reg_addr);
+	bool valueOffsetShareRegister = reg_value.IsAliasOf(offset);
 
 	if (WriteClobbersRegValue(accessSize, swap))
 	{
@@ -108,18 +109,19 @@ void Jit64::SafeWrite(GPRRegister& reg_value, GPRRegister& reg_addr, GPRRegister
 	// Easy: zero offset, so updates don't matter
 	if (offset.IsZero())
 	{
-		SafeWriteRegToReg(val, addr, accessSize, 0, CallerSavedRegistersInUse(), flags);
+		SafeWriteRegToReg(valueAddressShareRegister ? addr : val, addr, accessSize, 0, CallerSavedRegistersInUse(), flags);
 		return;
 	}
 
 	// If we're updating we can clobber address (transactionally)
 	if (update)
 	{
-		if (valueAddressShareRegister && val.HasPPCRegister())
+		if (valueAddressShareRegister)
 		{
 			auto scratch = regs.gpr.Borrow();
-			MOV_sum(32, scratch, reg_addr, offset);
-			SafeWriteRegToReg(val, scratch, accessSize, 0, CallerSavedRegistersInUse(), flags);
+			auto xv = reg_value.Bind(BindMode::ReadWrite);
+			MOV_sum(32, scratch, xv, offset);
+			SafeWriteRegToReg((X64Reg)xv, scratch, accessSize, 0, CallerSavedRegistersInUse(), flags);
 			MemoryExceptionCheck();
 			auto xa = addr.Bind(BindMode::Write);
 			MOV(32, xa, scratch);
@@ -133,6 +135,24 @@ void Jit64::SafeWrite(GPRRegister& reg_value, GPRRegister& reg_addr, GPRRegister
 		}
 		return;
 	}
+	
+	if (valueAddressShareRegister)
+	{
+		auto xv = reg_value.Bind(BindMode::ReadWrite);
+		auto scratch = regs.gpr.Borrow();
+		MOV_sum(32, scratch, xv, offset);
+		SafeWriteRegToReg((X64Reg)xv, scratch, accessSize, 0, CallerSavedRegistersInUse(), flags);
+		return;
+	}
+	
+	if (valueOffsetShareRegister)
+	{
+		auto xv = reg_value.Bind(BindMode::ReadWrite);
+		auto scratch = regs.gpr.Borrow();
+		MOV_sum(32, scratch, reg_addr, xv);
+		SafeWriteRegToReg((X64Reg)xv, scratch, accessSize, 0, CallerSavedRegistersInUse(), flags);
+		return;
+	}
 
 	// No update so we need to sum things in a scratch register. We can't just pass the offset into 
 	// SafeWriteRegToReg because that will clobber the address register we pass in
@@ -143,8 +163,9 @@ void Jit64::SafeWrite(GPRRegister& reg_value, GPRRegister& reg_addr, GPRRegister
 
 void Jit64::SafeLoad(GPRNative& reg_value, GPRRegister& reg_addr, GPRRegister& offset, int accessSize, bool signExtend, bool swap, bool update)
 {
-	bool valueAddressShareRegister = reg_value.HasPPCRegister() && reg_addr.HasPPCRegister() && reg_value.PPCRegister() == reg_addr.PPCRegister();
-	
+	bool valueAddressShareRegister = reg_value.IsAliasOf(reg_addr);
+	bool valueOffsetShareRegister = reg_value.IsAliasOf(offset);
+
 	if (!swap && accessSize == 8)
 	{
 		// Swapping automatically is currently cheaper
@@ -164,10 +185,8 @@ void Jit64::SafeLoad(GPRNative& reg_value, GPRRegister& reg_addr, GPRRegister& o
 	{
 		if (valueAddressShareRegister)
 		{
-			// SafeLoadToReg can clobber RSCRATCH as ABI return
-			auto scratch = regs.gpr.BorrowAnyBut(BitSet32{ RSCRATCH });
-			MOV(32, scratch, reg_addr);
-			SafeLoadToReg(reg_value, scratch, accessSize, 0, CallerSavedRegistersInUse(), signExtend, 0);
+			auto xv = reg_value.Bind(BindMode::ReadWrite);
+			SafeLoadToReg(xv, xv, accessSize, 0, CallerSavedRegistersInUse(), signExtend, 0);
 		}
 		else
 		{
@@ -183,6 +202,13 @@ void Jit64::SafeLoad(GPRNative& reg_value, GPRRegister& reg_addr, GPRRegister& o
 		if (valueAddressShareRegister)
 		{
 			PanicAlert("Invalid form");
+		}
+		else if (valueOffsetShareRegister)
+		{
+			auto xa = reg_addr.Bind(BindMode::ReadWriteTransactional);
+			auto xo = offset.Bind(BindMode::ReadWrite);
+			MOV_sum(32, xa, xa, xo);
+			SafeLoadToReg(xo, xa, accessSize, 0, CallerSavedRegistersInUse(), signExtend, 0);
 		}
 		else
 		{
@@ -200,7 +226,25 @@ void Jit64::SafeLoad(GPRNative& reg_value, GPRRegister& reg_addr, GPRRegister& o
 		SafeLoadToReg(reg_value, addr, accessSize, 0, CallerSavedRegistersInUse(), signExtend, 0);
 		return;
 	}
-	
+
+	// We know that address is getting clobbered
+	if (valueAddressShareRegister)
+	{
+		auto xv = reg_value.Bind(BindMode::ReadWrite);
+		MOV_sum(32, xv, xv, offset);
+		SafeLoadToReg(xv, xv, accessSize, 0, CallerSavedRegistersInUse(), signExtend, 0);
+		return;
+	}
+
+	// We know that offset is getting clobbered
+	if (valueOffsetShareRegister)
+	{
+		auto xv = reg_value.Bind(BindMode::ReadWrite);
+		MOV_sum(32, xv, reg_addr, xv);
+		SafeLoadToReg(xv, xv, accessSize, 0, CallerSavedRegistersInUse(), signExtend, 0);
+		return;
+	}
+
 	// Non-immediate offset so we need to sum things in a scratch register
 	// SafeLoadToReg can clobber RSCRATCH as ABI return
 	auto scratch = regs.gpr.BorrowAnyBut(BitSet32{ RSCRATCH });
