@@ -1287,7 +1287,7 @@ void Jit64::divwx(UGeckoInstruction inst)
 		auto eax = regs.gpr.Borrow(EAX);
 		auto edx = regs.gpr.Borrow(EDX);
 		auto xd = rd.BindWriteAndReadIf(d == a || d == b);
-		MOV(32, eax, ra);
+		MOV(32, eax, d == a ? xd : ra);
 		CDQ();
 		auto xb = rb.Bind(BindMode::Read);
 		TEST(32, xb, xb);
