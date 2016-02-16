@@ -928,7 +928,11 @@ void Jit64::subfx(UGeckoInstruction inst)
 	else
 	{
 		auto xd = rd.BindWriteAndReadIf((d == a || d == b));
-		if (d == b)
+		if (d == b && d == a)
+		{
+			SUB(32, xd, xd);
+		}
+		else if (d == b)
 		{
 			SUB(32, xd, ra);
 		}
