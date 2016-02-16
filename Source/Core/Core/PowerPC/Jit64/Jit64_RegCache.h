@@ -169,6 +169,7 @@ class Any
 private:
 	Any(RegisterClassBase<T>* reg, RegisterData data): m_reg(reg), m_data(data), m_realized(false)
 	{
+		LockAdvisory(m_data);
 	};
 
 	// A lock is only realized when a caller attempts to cast it to an OpArg or bind it
@@ -182,11 +183,19 @@ private:
 		return OpArg();
 	}
 
+	void LockAdvisory(RegisterData& data);
+	void UnlockAdvisory(RegisterData& data);
+	void Lock(RegisterData& data);
+	void Unlock();
+	void Unlock(RegisterData& data);
+
 public:
 	virtual ~Any() { Unlock(); }
 
 	Any(Any<T>&& other): m_reg(other.m_reg), m_data(other.m_data)
 	{
+		LockAdvisory(m_data);
+
 		// Transfer the lock (but don't actually realize it again)
 		if (other.m_realized)
 		{
@@ -201,6 +210,8 @@ public:
 
 	Any(const Any<T>& other): m_reg(other.m_reg), m_data(other.m_data), m_realized(false)
 	{
+		LockAdvisory(m_data);
+
 		// Realize this lock as well
 		if (other.m_realized)
 		{
@@ -218,6 +229,7 @@ public:
 		// Lock "other" first
 		if (other.m_realized)
 		{
+			LockAdvisory(m_data);
 			Lock(m_data);
 		}
 
@@ -225,6 +237,7 @@ public:
 		if (m_realized)
 		{
 			Unlock(old);
+			UnlockAdvisory(old);
 		}
 
 		// Update our realization state to match other
@@ -312,9 +325,21 @@ public:
 	// Sync the current value to the default location but otherwise doesn't move the
 	// register.
 	OpArg Sync();
-    
-    // TODO: Remove this
-    void Flush();
+
+	// TODO: Remove this
+	void Flush();
+
+	bool IsAliasOf(Any<T> other)
+	{
+		if (HasPPCRegister() && other.HasPPCRegister() && PPCRegister() == other.PPCRegister())
+			return true;
+		return false;
+	}
+
+	bool IsAliasOf(Any<T> other1, Any<T> other2)
+	{
+		return IsAliasOf(other1) || IsAliasOf(other2);
+	}
 
 	// True if this register is available in a native register
 	bool IsRegBound();
@@ -351,10 +376,6 @@ public:
 	// Any register, bound or not, can be used as an OpArg. If not bound, this will return
 	// a pointer into PPCSTATE.
 	operator Gen::OpArg();
-
-	void Lock(RegisterData& data);
-	void Unlock();
-	void Unlock(RegisterData& data);
 
 private:
 	RegisterClassBase<T>* m_reg;
@@ -408,6 +429,15 @@ class RegisterClassBase
 		// shortly. It still can be spilled back to memory but that may be
 		// expensive. This is a reference count.
 		int lockAdvise;
+
+		// Advises the register cache that a bind will be active shortly so we
+		// can warn callers that they should not use the unbound register.
+		// This is a reference count.
+		int bindAdvise;
+
+		// Advises the register cache that a a register is bound writable
+		// without being read.
+		int bindWriteWithoutReadAdvise;
 
 		// A locked register is in use by the currently-generating opcode and cannot
 		// be spilled back to memory. This is a reference count.

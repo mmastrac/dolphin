@@ -20,6 +20,15 @@ Native<T> Any<T>::Bind(Jit64Reg::BindMode mode)
 	if (mode == BindMode::WriteTransactional && !m_reg->m_jit->jo.memcheck)
 		mode = BindMode::Write;
 
+	// If this register (or an alias) was bound write-only and we are now
+	// attempting to read it, barf
+	if (mode == BindMode::Read || mode == BindMode::ReadWrite || mode == BindMode::ReadWriteTransactional)
+	{
+		auto& ppc = m_reg->m_regs[m_data.reg];
+		_assert_msg_(REGCACHE, ppc.bindWriteWithoutReadAdvise == 0, "Register was bound as write-only before being bound for read");
+		// we can continue here, but it may not be pretty
+	}
+
 	_assert_msg_(REGCACHE, m_data.type == RegisterType::PPC || m_data.type == RegisterType::Bind, "Only PPC registers can be bound");
 	RealizeLock();
 	RegisterData data = { .type = RegisterType::Bind, .mode = mode, .reg = m_data.reg };
@@ -161,6 +170,31 @@ void Any<T>::Lock(RegisterData& data)
 }
 
 template <Type T>
+void Any<T>::LockAdvisory(RegisterData& data)
+{
+	switch (data.type)
+	{
+	case RegisterType::Bind:
+	{
+		auto& ppc = m_reg->m_regs[data.reg];
+		ppc.bindAdvise++;
+
+		if (data.mode == BindMode::Write || data.mode == BindMode::WriteTransactional)
+		{
+			ppc.bindWriteWithoutReadAdvise++;
+		}
+	}
+	case RegisterType::PPC:
+	{
+		auto& ppc = m_reg->m_regs[data.reg];
+		ppc.lockAdvise++;
+	}
+	default:
+		break;
+	}
+}
+
+template <Type T>
 void Any<T>::SetFrom(Any<T> other)
 {
 	// When we implement single tracking for FPU register, this will be valid
@@ -186,14 +220,11 @@ void Any<T>::Unlock()
 {
 	// If you trip this, you locked or bound a register that was never
 	// actually used
-	// TODO: create a realization flag on the PPC/X64 registers that detects when
-	// locks are held but none of them realize it, since we should not trigger this
-	// if one alias is realized but another is not.
 	// _assert_msg_(REGCACHE, m_realized, "Locked register was never realized");
-	if (!m_realized)
-		return;
+	if (m_realized)
+		Unlock(m_data);
 
-	Unlock(m_data);
+	UnlockAdvisory(m_data);
 }
 
 template <Type T>
@@ -242,6 +273,31 @@ void Any<T>::Unlock(RegisterData& data)
 }
 
 template <Type T>
+void Any<T>::UnlockAdvisory(RegisterData& data)
+{
+	switch (data.type)
+	{
+	case RegisterType::Bind:
+	{
+		auto& ppc = m_reg->m_regs[data.reg];
+		ppc.bindAdvise--;
+
+		if (data.mode == BindMode::Write || data.mode == BindMode::WriteTransactional)
+		{
+			ppc.bindWriteWithoutReadAdvise--;
+		}
+	}
+	case RegisterType::PPC:
+	{
+		auto& ppc = m_reg->m_regs[data.reg];
+		ppc.lockAdvise--;
+	}
+	default:
+		break;
+	}
+}
+
+template <Type T>
 void Any<T>::SetImm32(u32 imm)
 {
 	RealizeLock();
@@ -271,6 +327,11 @@ Any<T>::operator OpArg()
 	if (m_data.type == RegisterType::PPC)
 	{
 		auto& ppc = m_reg->m_regs[m_data.reg];
+		// If you trip this, it means you did something like:
+		//   auto xd = rd.Bind(...);
+		//   MOV(32, rd, ...);
+		// or you've got two registers that alias each other and only one is bound
+		_assert_msg_(REGCACHE, ppc.bindAdvise == 0, "Register is bound but caller attempted to use unbound register");
 		return ppc.location;
 	}
 
