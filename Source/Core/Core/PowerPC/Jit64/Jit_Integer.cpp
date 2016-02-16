@@ -966,7 +966,7 @@ void Jit64::MultiplyImmediate(u32 imm, GPRRegister& ra, GPRNative& xd, bool over
 
 	if (imm == (u32)-1)
 	{
-		if (xd.PPCRegister() != ra.PPCRegister())
+		if (!xd.IsAliasOf(ra))
 			MOV(32, xd, ra);
 		NEG(32, xd);
 		return;
@@ -980,14 +980,14 @@ void Jit64::MultiplyImmediate(u32 imm, GPRRegister& ra, GPRNative& xd, bool over
 		{
 			u32 shift = IntLog2(imm);
 			// use LEA if it saves an op
-			if (xd.PPCRegister() != ra.PPCRegister() && shift <= 3 && shift >= 1 && ra.IsRegBound())
+			if (!xd.IsAliasOf(ra) && shift <= 3 && shift >= 1 && ra.IsRegBound())
 			{
 				auto xa = ra.Bind(BindMode::Reuse);
 				LEA(32, xd, MScaled(xa, SCALE_1 << shift, 0));
 			}
 			else
 			{
-				if (xd.PPCRegister() != ra.PPCRegister())
+				if (!xd.IsAliasOf(ra))
 					MOV(32, xd, ra);
 				if (shift)
 					SHL(32, xd, Imm8(shift));
@@ -1011,7 +1011,7 @@ void Jit64::MultiplyImmediate(u32 imm, GPRRegister& ra, GPRNative& xd, bool over
 	}
 
 	// if we didn't find any better options
-	IMUL(32, xd, ra, Imm32(imm));
+	IMUL(32, xd, xd.IsAliasOf(ra) ? xd : ra, Imm32(imm));
 }
 
 void Jit64::mulli(UGeckoInstruction inst)
