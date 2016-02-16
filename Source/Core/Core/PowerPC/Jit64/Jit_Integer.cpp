@@ -1652,7 +1652,7 @@ void Jit64::rlwimix(UGeckoInstruction inst)
 				// TODO: common cases of this might be faster with pinsrb or abuse of AH
 				auto xa = ra.Bind(BindMode::ReadWrite);
 				auto scratch = regs.gpr.Borrow();
-				MOV(32, scratch, rs);
+				MOV(32, scratch, a == s ? xa : rs);
 				if (isLeftShift)
 				{
 					SHL(32, scratch, Imm8(inst.SH));
