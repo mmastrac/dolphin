@@ -935,7 +935,7 @@ void Jit64::subfx(UGeckoInstruction inst)
 		else if (d == a)
 		{
             auto scratch = regs.gpr.Borrow();
-			MOV(32, scratch, ra);
+			MOV(32, scratch, xd);
 			MOV(32, xd, rb);
 			SUB(32, xd, scratch);
 		}
