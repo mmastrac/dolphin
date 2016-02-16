@@ -1113,9 +1113,9 @@ void Jit64::mulhwXx(UGeckoInstruction inst)
 		auto edx = regs.gpr.Borrow(EDX);
 
 		auto xd = rd.BindWriteAndReadIf(d == a || d == b);
-		MOV(32, eax, ra);
+		MOV(32, eax, d == a ? xd : ra);
 		rb.RealizeImmediate();
-		IMUL(32, rb);
+		IMUL(32, d == b ? xd : rb);
 		MOV(32, xd, edx);
 	}
 	else
