@@ -1528,14 +1528,23 @@ void Jit64::rlwinmx(UGeckoInstruction inst)
 		// common optimized case: byte/word extract
 		else if (simple_mask && !(inst.SH & (mask_size - 1)))
 		{
-			MOVZX(32, mask_size, xa, ExtractFromReg(rs, inst.SH ? (32 - inst.SH) >> 3 : 0));
+			if (a == s)
+			{
+				if (inst.SH)
+					SHR(32, xa, Imm8(32 - inst.SH));
+				MOVZX(32, mask_size, xa, xa);
+			}
+			else
+			{
+				MOVZX(32, mask_size, xa, ExtractFromReg(rs, inst.SH ? (32 - inst.SH) >> 3 : 0));
+			}
 			needs_sext = false;
 		}
 		// another optimized special case: byte/word extract plus shift
 		else if (((mask >> inst.SH) << inst.SH) == mask && !left_shift &&
 		         ((mask >> inst.SH) == 0xff || (mask >> inst.SH) == 0xffff))
 		{
-			MOVZX(32, mask_size, xa, rs);
+			MOVZX(32, mask_size, xa, a == s ? xa : rs);
 			SHL(32, xa, Imm8(inst.SH));
 			needs_sext = inst.SH + mask_size >= 32;
 		}
