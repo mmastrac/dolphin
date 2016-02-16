@@ -1854,9 +1854,15 @@ void Jit64::srawix(UGeckoInstruction inst)
 		else
 		{
 			auto scratch = regs.gpr.Borrow();
-			MOV(32, scratch, rs);
-			if (a != s)
+			if (a == s)
+			{
+				MOV(32, scratch, xa);
+			}
+			else
+			{
+				MOV(32, scratch, rs);
 				MOV(32, xa, scratch);
+			}
 			// some optimized common cases that can be done in slightly fewer ops
 			if (amount == 1)
 			{
