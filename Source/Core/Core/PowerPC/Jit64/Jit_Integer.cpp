@@ -860,7 +860,7 @@ void Jit64::extsXx(UGeckoInstruction inst)
 	else
 	{
 		auto xa = ra.BindWriteAndReadIf(a == s);
-		MOVSX(32, size, xa, rs);
+		MOVSX(32, size, xa, a == s ? xa : rs);
 	}
 	if (inst.Rc)
 		ComputeRC(ra);
