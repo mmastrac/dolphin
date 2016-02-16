@@ -1836,7 +1836,7 @@ void Jit64::srawx(UGeckoInstruction inst)
 		auto ecx = regs.gpr.Borrow(ECX);
 		auto scratch = regs.gpr.Borrow();
 		auto xa = ra.BindWriteAndReadIf(a == s || a == b);
-		MOV(32, ecx, rb);
+		MOV(32, ecx, a == b ? xa : rb);
 		if (a != s)
 			MOV(32, xa, rs);
 		SHL(64, xa, Imm8(32));
