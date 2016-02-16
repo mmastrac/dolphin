@@ -1373,59 +1373,64 @@ void Jit64::arithXex(UGeckoInstruction inst)
 	bool same_input_sub = !add && regsource && a == b;
 
 	auto rd = regs.gpr.Lock(d);
-	auto xd = rd.BindWriteAndReadIf(!same_input_sub && (d == a || d == b));
-    
-	if (!js.carryFlagSet)
-		JitGetAndClearCAOV(inst.OE);
-	else
-		UnlockFlags();
+	{
+		auto xd = rd.BindWriteAndReadIf(!same_input_sub && (d == a || d == b));
 
-	bool invertedCarry = false;
-	// Special case: subfe A, B, B is a common compiler idiom
-	if (same_input_sub)
-	{
-		// Convert carry to borrow
-		if (!js.carryFlagInverted)
-			CMC();
-		SBB(32, xd, xd);
-		invertedCarry = true;
-	}
-	else if (!add && regsource && d == b)
-	{
-        auto ra = regs.gpr.Lock(a);
-		if (!js.carryFlagInverted)
-			CMC();
-		if (d != b)
-        {
-            auto rb = regs.gpr.Lock(b);
-            MOV(32, xd, rb);
-        }
-		SBB(32, xd, ra);
-		invertedCarry = true;
-	}
-	else
-	{
-		auto ra = regs.gpr.Lock(a);
-		auto source = regsource ? (d == b ? ra : regs.gpr.Lock(b)) : regs.gpr.Imm32(mex ? 0xFFFFFFFF : 0);
-		if (d != a && d != b)
-			MOV(32, xd, ra);
-		if (!add)
-			NOT(32, xd);
-		// if the source is an immediate, we can invert carry by going from add -> sub and doing src = -1 - src
-		if (js.carryFlagInverted && source.IsImm())
+		if (!js.carryFlagSet)
+			JitGetAndClearCAOV(inst.OE);
+		else
+			UnlockFlags();
+
+		bool invertedCarry = false;
+		// Special case: subfe A, B, B is a common compiler idiom
+		if (same_input_sub)
 		{
-			source = regs.gpr.Imm32(-1 - source.SImm32());
-			SBB(32, xd, source);
+			// Convert carry to borrow
+			if (!js.carryFlagInverted)
+				CMC();
+			SBB(32, xd, xd);
+			invertedCarry = true;
+		}
+		else if (!add && regsource && d == b)
+		{
+	        auto ra = regs.gpr.Lock(a);
+			if (!js.carryFlagInverted)
+				CMC();
+			if (d != b)
+	        {
+	            auto rb = regs.gpr.Lock(b);
+	            MOV(32, xd, rb);
+	        }
+			SBB(32, xd, ra);
 			invertedCarry = true;
 		}
 		else
 		{
-			if (js.carryFlagInverted)
-				CMC();
-			ADC(32, xd, source);
+			auto ra = regs.gpr.Lock(a);
+			auto source = regsource ? (d == b ? ra : regs.gpr.Lock(b)) : regs.gpr.Imm32(mex ? 0xFFFFFFFF : 0);
+			if (d != a && d != b)
+				MOV(32, xd, ra);
+			if (!add)
+				NOT(32, xd);
+			// if the source is an immediate, we can invert carry by going from add -> sub and doing src = -1 - src
+			if (js.carryFlagInverted && source.IsImm())
+			{
+				source = regs.gpr.Imm32(-1 - source.SImm32());
+				SBB(32, xd, source);
+				invertedCarry = true;
+			}
+			else
+			{
+				if (js.carryFlagInverted)
+					CMC();
+				if (regsource && d == a && d == b)
+					ADC(32, xd, xd);
+				else
+					ADC(32, xd, source);
+			}
 		}
+		FinalizeCarryOverflow(inst.OE, invertedCarry);
 	}
-	FinalizeCarryOverflow(inst.OE, invertedCarry);
 	if (inst.Rc)
 		ComputeRC(rd);
 }
