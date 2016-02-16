@@ -1229,11 +1229,12 @@ void Jit64::divwux(UGeckoInstruction inst)
 		auto eax = regs.gpr.Borrow(EAX);
 		auto edx = regs.gpr.Borrow(EDX);
 
-		auto xd = rd.BindWriteAndReadIf(d == a || d == b);
-		MOV(32, eax, ra);
+		auto xd = rd.BindWriteAndReadIf(rd.IsAliasOf(ra, rb));
+		MOV(32, eax, d == a ? xd : ra);
 		XOR(32, edx, edx);
 		rb.RealizeImmediate();
-		CMP_or_TEST(32, rb, Imm32(0));
+		auto divisor = d == b ? xd : rb;
+		CMP_or_TEST(32, divisor, Imm32(0));
 		FixupBranch not_div_by_zero = J_CC(CC_NZ);
 		MOV(32, xd, edx);
 		if (inst.OE)
@@ -1242,7 +1243,7 @@ void Jit64::divwux(UGeckoInstruction inst)
 		}
 		FixupBranch end = J();
 		SetJumpTarget(not_div_by_zero);
-		DIV(32, rb);
+		DIV(32, divisor);
 		MOV(32, xd, eax);
 		if (inst.OE)
 		{
