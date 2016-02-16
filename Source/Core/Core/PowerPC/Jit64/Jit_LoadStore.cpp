@@ -165,8 +165,7 @@ void Jit64::lXXx(UGeckoInstruction inst)
 		return;
 	}
 
-	auto xd = rd.Bind(BindMode::Write);
-//	printf("%08x %d/%d/%d %d %d %d %d\n", js.compilerPC, a, b, d, accessSize, signExtend, !byte_reversed, update);
+	auto xd = rd.BindWriteAndReadIf(rd.IsAliasOf(ra, rb));
 	SafeLoad(xd, ra, rb, accessSize, signExtend, !byte_reversed, update);
 }
 
