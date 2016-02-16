@@ -658,7 +658,7 @@ void Jit64::boolX(UGeckoInstruction inst)
 			{
 				auto xa = ra.Bind(BindMode::Write);
 				MOV(32, xa, rs);
-				NOT(32, ra);
+				NOT(32, xa);
 			}
 			else if (inst.Rc)
 			{
