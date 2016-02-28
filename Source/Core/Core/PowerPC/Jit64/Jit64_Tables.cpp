@@ -2,8 +2,8 @@
 // Licensed under GPLv2+
 // Refer to the license.txt file included.
 
-#include "Core/PowerPC/Jit64/Jit.h"
 #include "Core/PowerPC/Gekko.h"
+#include "Core/PowerPC/Jit64/Jit.h"
 #include "Core/PowerPC/Jit64/Jit64_Tables.h"
 
 static Jit64::Instruction dynaOpTable[64];
@@ -375,6 +375,10 @@ void CompileInstruction(PPCAnalyst::CodeOp& op)
 #endif
     info->compileCount++;
     info->lastUse = jit->js.compilerPC;
+  }
+  else
+  {
+    jit64->WriteInvalidInstruction();
   }
 }
 
