@@ -248,21 +248,18 @@ void Jit64::FallBackToInterpreter(UGeckoInstruction inst)
 	ABI_PopRegistersAndAdjustStack({}, 0);
 	if (js.op->opinfo->flags & FL_ENDBLOCK)
 	{
+		// Test to see if the interpreter modified NPC
+		MOV(32, R(RSCRATCH), PPCSTATE(npc));
+		CMP(32, R(RSCRATCH), Imm32(js.compilerPC + 4));
+		FixupBranch c = J_CC(CC_Z);
+		// Yep, do dynamic dispatch
+		WriteExit(PPCSTATE(npc), ExitExceptionCheck::CHECK_ALL_EXCEPTIONS);
+		SetJumpTarget(c);
+
+		// If this is the last instruction, write an exit to check exceptions,
+		// otherwise we'll continue through to the next instruction.
 		if (js.isLastInstruction)
-		{
-			MOV(32, R(RSCRATCH), PPCSTATE(npc));
-			MOV(32, PPCSTATE(pc), R(RSCRATCH));
-			WriteExceptionExit();
-		}
-		else
-		{
-			MOV(32, R(RSCRATCH), PPCSTATE(npc));
-			CMP(32, R(RSCRATCH), Imm32(js.compilerPC + 4));
-			FixupBranch c = J_CC(CC_Z);
-			MOV(32, PPCSTATE(pc), R(RSCRATCH));
-			WriteExceptionExit();
-			SetJumpTarget(c);
-		}
+			WriteExit(js.compilerPC + 4, ExitExceptionCheck::CHECK_ALL_EXCEPTIONS);
 	}
 }
 
@@ -345,31 +342,169 @@ bool Jit64::Cleanup()
 	return did_something;
 }
 
-void Jit64::WriteExit(u32 destination, bool bl, u32 after)
+void Jit64::WriteExit(const Gen::OpArg& destination, bool link, u32 after, ExitExceptionCheck check)
 {
-	if (!m_enable_blr_optimization)
-		bl = false;
+	if (destination.IsImm())
+		DEBUG_LOG(DYNA_REC, "%08x WriteExit(dest=%08x,link=%d, after=%08x, check=%d", js.compilerPC, destination.Imm32(), (int)link, after, (int)check);
+	else if (destination == PPCSTATE_SRR0)
+		DEBUG_LOG(DYNA_REC, "%08x WriteExit(dest=SRR0,link=%d, after=%08x, check=%d", js.compilerPC, (int)link, after, (int)check);
+	else if (destination == PPCSTATE_LR)
+		DEBUG_LOG(DYNA_REC, "%08x WriteExit(dest=LR,link=%d, after=%08x, check=%d", js.compilerPC, (int)link, after, (int)check);
+	else if (destination == PPCSTATE_CTR)
+		DEBUG_LOG(DYNA_REC, "%08x WriteExit(dest=CTR,link=%d, after=%08x, check=%d", js.compilerPC, (int)link, after, (int)check);
+	else if (destination == PPCSTATE(npc))
+		DEBUG_LOG(DYNA_REC, "%08x WriteExit(dest=NPC,link=%d, after=%08x, check=%d", js.compilerPC, (int)link, after, (int)check);
+	else
+		// Let's be strict about what we accept.
+		_assert_msg_(DYNA_REC, 0, "Destination must be immediate or PPCSTATE(SRR0|LR|CTR|NPC)");
+
+	// We don't support branch+link and exception checks
+	_assert_msg_(DYNA_REC, !link || check == ExitExceptionCheck::NONE, "link cannot be true if check != NONE");
+	_assert_msg_(DYNA_REC, !destination.IsImm() || !(destination.Imm32() & 3), "Immediate destination not a multiple of 4");
+
+	bool call = link && m_enable_blr_optimization;
 
 	Cleanup();
 
-	if (bl)
-	{
-		MOV(32, R(RSCRATCH2), Imm32(after));
-		PUSH(RSCRATCH2);
-	}
+#if 0
+	// Quick-and-easy disabler for block linking and all other exit
+	// optimizations: jump to the dispatcher and set PC/NPC unconditionally.
+	// Useful for diagnostics.
+	MOV(32, R(RSCRATCH), destination);
+	AND(32, R(RSCRATCH), Imm32(0xFFFFFFFC));
+	MOV(32, PPCSTATE(pc), R(RSCRATCH));
+	MOV(32, PPCSTATE(npc), R(RSCRATCH));
+
+	// Set the link register
+	if (link)
+		MOV(32, PPCSTATE_LR, Imm32(after));
+
+	WriteExitExceptionCheck(check);
 
 	SUB(32, PPCSTATE(downcount), Imm32(js.downcountAmount));
+	JMP(asm_routines.dispatcher, true);
+	return;
+#endif
 
-	JustWriteExit(destination, bl, after);
+	OpArg dest;
+	bool dest_align4;
+	bool pc_set = false;
+
+	// Load new PC in R12
+	if (destination.IsImm())
+	{
+		dest = destination;
+		dest_align4 = true;
+	}
+	else
+	{
+		MOV(32, R(R12), destination);
+		dest = R(R12);
+		dest_align4 = false;
+	}
+
+	// Set the link register.
+	if (link)
+		MOV(32, PPCSTATE_LR, Imm32(after));
+
+	// Exception handlers require NPC and PC to be correct.
+	if (check != ExitExceptionCheck::NONE)
+	{
+		if (destination != PPCSTATE(npc))
+		{
+			if (!dest_align4)
+			{
+				AND(32, dest, Imm32(0xFFFFFFFC));
+				dest_align4 = true;
+			}
+			MOV(32, PPCSTATE(npc), dest);
+		}
+		MOV(32, PPCSTATE(pc), dest);
+		pc_set = true;
+
+		WriteExitExceptionCheck(check);
+
+		// If we have an immediate destination, we might be able to block link
+		// if there was no exception. This may save us a trip through the
+		// dispatcher since we still know the address.
+		if (destination.IsImm())
+		{
+			// Check NPC, since that was the one we set
+			CMP(32, PPCSTATE(npc), dest);
+			FixupBranch b = J_CC(CC_E);
+
+			// NPC+PC was updated by the exception handler so we need to do
+			// dynamic dispatch to whatever is there.
+			SUB(32, PPCSTATE(downcount), Imm32(js.downcountAmount));
+			JMP(asm_routines.dispatcher, true);
+
+			SetJumpTarget(b);
+		}
+	}
+
+	if (destination.IsImm())
+	{
+		// Important: the flag from this SUB will be read by the next block or
+		// the dispatcher, so it needs to be the last thing we do.
+		SUB(32, PPCSTATE(downcount), Imm32(js.downcountAmount));
+		WriteExitBlockLink(destination.Imm32(), call, after);
+		return;
+	}
+
+	if (destination == PPCSTATE_LR && m_enable_blr_optimization)
+	{
+		// Return using link register: let's check to see that LR wasn't
+		// modified by the sub. Note that we only check the 32-bits that
+		// contains the address.
+		MOV(32, PPCSTATE(pc), dest);
+		CMP(32, MDisp(RSP, 4), dest);
+		// dispatcherMispredictedBLR expects RSCRATCH2 to contain downcountAmount
+		MOV(32, R(RSCRATCH2), Imm32(js.downcountAmount));
+		J_CC(CC_NE, asm_routines.dispatcherMispredictedBLR);
+		SUB(32, PPCSTATE(downcount), R(RSCRATCH2));
+		RET();
+		return;
+	}
+
+	// This is a branch to CTR|SRR0|LR|NPC that we don't know the value of.
+	if (!pc_set)
+	{
+		if (!dest_align4)
+		{
+			AND(32, dest, Imm32(0xFFFFFFFC));
+			dest_align4 = true;
+		}
+		MOV(32, PPCSTATE(pc), dest);
+		MOV(32, PPCSTATE(npc), dest);
+	}
+
+	// Important: the flag from this SUB will be read by the next block or the
+	// dispatcher, so we can't touch it.
+	SUB(32, PPCSTATE(downcount), Imm32(js.downcountAmount));
+	if (call)
+	{
+		PUSH(32, Imm32(after)); // this actually pushes 8 bytes
+		CALL(asm_routines.dispatcher);
+		POP(RSCRATCH);
+		WriteExitBlockLink(after, false, 0);
+	}
+	else
+	{
+		JMP(asm_routines.dispatcher, true);
+	}
 }
 
-void Jit64::JustWriteExit(u32 destination, bool bl, u32 after)
+void Jit64::WriteExitBlockLink(u32 destination, bool call, u32 after)
 {
-	//If nobody has taken care of this yet (this can be removed when all branches are done)
+	// If nobody has taken care of this yet (this can be removed when all branches are done)
 	JitBlock *b = js.curBlock;
 	JitBlock::LinkData linkData;
 	linkData.exitAddress = destination;
-	linkData.linkStatus = false;
+
+	if (call)
+	{
+		PUSH(32, Imm32(after)); // this actually pushes 8 bytes
+	}
 
 	// Link opportunity!
 	int block;
@@ -379,7 +514,7 @@ void Jit64::JustWriteExit(u32 destination, bool bl, u32 after)
 		JitBlock* jb = blocks.GetBlock(block);
 		const u8* addr = jb->checkedEntry;
 		linkData.exitPtrs = GetWritableCodePtr();
-		if (bl)
+		if (call)
 			CALL(addr);
 		else
 			JMP(addr, true);
@@ -389,99 +524,48 @@ void Jit64::JustWriteExit(u32 destination, bool bl, u32 after)
 	{
 		MOV(32, PPCSTATE(pc), Imm32(destination));
 		linkData.exitPtrs = GetWritableCodePtr();
-		if (bl)
+		if (call)
 			CALL(asm_routines.dispatcher);
 		else
 			JMP(asm_routines.dispatcher, true);
+		linkData.linkStatus = false;
 	}
 
 	b->linkData.push_back(linkData);
 
-	if (bl)
+	if (call)
 	{
 		POP(RSCRATCH);
-		JustWriteExit(after, false, 0);
+		WriteExitBlockLink(after, false, 0);
 	}
 }
 
-void Jit64::WriteExitDestInRSCRATCH(bool bl, u32 after)
+void Jit64::WriteExitExceptionCheck(ExitExceptionCheck check)
 {
-	if (!m_enable_blr_optimization)
-		bl = false;
-	MOV(32, PPCSTATE(pc), R(RSCRATCH));
-	Cleanup();
-
-	if (bl)
+	switch (check)
 	{
-		MOV(32, R(RSCRATCH2), Imm32(after));
-		PUSH(RSCRATCH2);
+	case ExitExceptionCheck::CHECK_ALL_EXCEPTIONS:
+		ABI_PushRegistersAndAdjustStack({}, 0);
+		ABI_CallFunction(PowerPC::CheckExceptions);
+		ABI_PopRegistersAndAdjustStack({}, 0);
+		break;
+	case ExitExceptionCheck::CHECK_EXTERNAL_EXCEPTIONS:
+		ABI_PushRegistersAndAdjustStack({}, 0);
+		ABI_CallFunction(PowerPC::CheckExternalExceptions);
+		ABI_PopRegistersAndAdjustStack({}, 0);
+		break;
+	case ExitExceptionCheck::IDLE_AND_CHECK_ALL_EXCEPTIONS:
+		ABI_PushRegistersAndAdjustStack({}, 0);
+		ABI_CallFunction(CoreTiming::Idle);
+		ABI_CallFunction(PowerPC::CheckExceptions);
+		ABI_PopRegistersAndAdjustStack({}, 0);
+		break;
+	case ExitExceptionCheck::NONE:
+		// No exception checks
+		break;
+	default:
+		_assert_msg_(DYNA_REC, 0, "Invalid check flag");
 	}
-
-	SUB(32, PPCSTATE(downcount), Imm32(js.downcountAmount));
-	if (bl)
-	{
-		CALL(asm_routines.dispatcher);
-		POP(RSCRATCH);
-		JustWriteExit(after, false, 0);
-	}
-	else
-	{
-		JMP(asm_routines.dispatcher, true);
-	}
-}
-
-void Jit64::WriteBLRExit()
-{
-	if (!m_enable_blr_optimization)
-	{
-		WriteExitDestInRSCRATCH();
-		return;
-	}
-	MOV(32, PPCSTATE(pc), R(RSCRATCH));
-	bool disturbed = Cleanup();
-	if (disturbed)
-		MOV(32, R(RSCRATCH), PPCSTATE(pc));
-	MOV(32, R(RSCRATCH2), Imm32(js.downcountAmount));
-	CMP(64, R(RSCRATCH), MDisp(RSP, 8));
-	J_CC(CC_NE, asm_routines.dispatcherMispredictedBLR);
-	SUB(32, PPCSTATE(downcount), R(RSCRATCH2));
-	RET();
-}
-
-void Jit64::WriteRfiExitDestInRSCRATCH()
-{
-	MOV(32, PPCSTATE(pc), R(RSCRATCH));
-	MOV(32, PPCSTATE(npc), R(RSCRATCH));
-	Cleanup();
-	ABI_PushRegistersAndAdjustStack({}, 0);
-	ABI_CallFunction(reinterpret_cast<void *>(&PowerPC::CheckExceptions));
-	ABI_PopRegistersAndAdjustStack({}, 0);
-	SUB(32, PPCSTATE(downcount), Imm32(js.downcountAmount));
-	JMP(asm_routines.dispatcher, true);
-}
-
-void Jit64::WriteExceptionExit()
-{
-	Cleanup();
-	MOV(32, R(RSCRATCH), PPCSTATE(pc));
-	MOV(32, PPCSTATE(npc), R(RSCRATCH));
-	ABI_PushRegistersAndAdjustStack({}, 0);
-	ABI_CallFunction(reinterpret_cast<void *>(&PowerPC::CheckExceptions));
-	ABI_PopRegistersAndAdjustStack({}, 0);
-	SUB(32, PPCSTATE(downcount), Imm32(js.downcountAmount));
-	JMP(asm_routines.dispatcher, true);
-}
-
-void Jit64::WriteExternalExceptionExit()
-{
-	Cleanup();
-	MOV(32, R(RSCRATCH), PPCSTATE(pc));
-	MOV(32, PPCSTATE(npc), R(RSCRATCH));
-	ABI_PushRegistersAndAdjustStack({}, 0);
-	ABI_CallFunction(reinterpret_cast<void *>(&PowerPC::CheckExternalExceptions));
-	ABI_PopRegistersAndAdjustStack({}, 0);
-	SUB(32, PPCSTATE(downcount), Imm32(js.downcountAmount));
-	JMP(asm_routines.dispatcher, true);
 }
 
 void Jit64::Run()
@@ -725,8 +809,7 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 				auto branch = regs.Branch();
 				branch.Flush();
 
-				MOV(32, PPCSTATE(pc), Imm32(ops[i].address));
-				WriteExternalExceptionExit();
+				WriteExit(ops[i].address, ExitExceptionCheck::CHECK_EXTERNAL_EXCEPTIONS);
 			SwitchToNearCode();
 
 			SetJumpTarget(noCPInt);
@@ -745,9 +828,9 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 					HLEFunction(function);
 					if (type == HLE::HLE_HOOK_REPLACE)
 					{
-						MOV(32, R(RSCRATCH), PPCSTATE(npc));
+						printf("hook!\n");
 						js.downcountAmount += js.st.numCycles;
-						WriteExitDestInRSCRATCH();
+						WriteExit(PPCSTATE(npc));
 						break;
 					}
 				}
@@ -767,11 +850,8 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 					auto branch = regs.Branch();
 					branch.Flush();
 
-					// If a FPU exception occurs, the exception handler will read
-					// from PC.  Update PC with the latest value in case that happens.
-					MOV(32, PPCSTATE(pc), Imm32(ops[i].address));
 					OR(32, PPCSTATE(Exceptions), Imm32(EXCEPTION_FPU_UNAVAILABLE));
-					WriteExceptionExit();
+					WriteExit(ops[i].address, ExitExceptionCheck::CHECK_ALL_EXCEPTIONS);
 				SwitchToNearCode();
 
 				js.firstFPInstructionFound = true;
@@ -830,10 +910,7 @@ const u8* Jit64::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBloc
 					branch.Rollback();
 					branch.Flush();
 
-					// If a memory exception occurs, the exception handler will read
-					// from PC.  Update PC with the latest value in case that happens.
-					MOV(32, PPCSTATE(pc), Imm32(ops[i].address));
-					WriteExceptionExit();
+					WriteExit(ops[i].address, ExitExceptionCheck::CHECK_ALL_EXCEPTIONS);
 				SwitchToNearCode();
 			}
 

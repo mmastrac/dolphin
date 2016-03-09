@@ -54,6 +54,14 @@ private:
 	bool m_clear_cache_asap;
 	u8* m_stack;
 
+	enum class ExitExceptionCheck
+	{
+		NONE,
+		CHECK_ALL_EXCEPTIONS,
+		IDLE_AND_CHECK_ALL_EXCEPTIONS,
+		CHECK_EXTERNAL_EXCEPTIONS,
+	};
+
 public:
 	Jit64() : code_buffer(32000) {}
 	~Jit64() {}
@@ -101,13 +109,14 @@ public:
 	void WriteInvalidInstruction();
 	void UnexpectedInstructionForm();
 
-	void WriteExit(u32 destination, bool bl = false, u32 after = 0);
-	void JustWriteExit(u32 destination, bool bl, u32 after);
-	void WriteExitDestInRSCRATCH(bool bl = false, u32 after = 0);
-	void WriteBLRExit();
-	void WriteExceptionExit();
-	void WriteExternalExceptionExit();
-	void WriteRfiExitDestInRSCRATCH();
+	void WriteExit(const Gen::OpArg& destination, bool link, u32 after, ExitExceptionCheck check = ExitExceptionCheck::NONE);
+	inline void WriteExit(u32 destination, bool link, u32 after) { WriteExit(Gen::Imm32(destination), link, after); }
+	inline void WriteExit(const Gen::OpArg& destination) { WriteExit(destination, 0, false); }
+	inline void WriteExit(u32 destination) { WriteExit(Gen::Imm32(destination), 0, false); }
+	inline void WriteExit(const Gen::OpArg& destination, ExitExceptionCheck check) { WriteExit(destination, 0, false, check); }
+	inline void WriteExit(u32 destination, ExitExceptionCheck check) { WriteExit(Gen::Imm32(destination), 0, false, check); }
+	void WriteExitExceptionCheck(ExitExceptionCheck check);
+	void WriteExitBlockLink(u32 destination, bool call, u32 after);
 	bool Cleanup();
 
 	void GenerateConstantOverflow(bool overflow);

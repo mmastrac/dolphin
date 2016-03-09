@@ -132,8 +132,6 @@ void Jit64::lXXx(UGeckoInstruction inst)
 	// (mb2): I agree,
 	// IMHO those Idles should always be skipped and replaced by a more controllable "native" Idle methode
 	// ... maybe the throttle one already do that :p
-	// TODO: We shouldn't use a debug read here.  It should be possible to get
-	// the following instructions out of the JIT state.
 	if (SConfig::GetInstance().bSkipIdle &&
 	    PowerPC::GetState() != PowerPC::CPU_STEPPING &&
 	    inst.OPCD == 32 &&
@@ -143,18 +141,14 @@ void Jit64::lXXx(UGeckoInstruction inst)
 	    (SConfig::GetInstance().bWii && js.op[1].inst.hex == 0x2C000000)) &&
 	    js.op[2].inst.hex == 0x4182fff8)
 	{
-		// if it's still 0, we can wait until the next event
+		// If it's still 0, we can wait until the next event
 		TEST(32, xd, xd);
 		FixupBranch noIdle = J_CC(CC_NZ);
+		auto branch = regs.Branch();
+		branch.Flush();
 
-		BitSet32 registersInUse = CallerSavedRegistersInUse();
-		ABI_PushRegistersAndAdjustStack(registersInUse, 0);
-		ABI_CallFunction((void *)&CoreTiming::Idle);
-		ABI_PopRegistersAndAdjustStack(registersInUse, 0);
-
-		// ! we must continue executing of the loop after exception handling, maybe there is still 0 in r0
-		//MOV(32, PPCSTATE(pc), Imm32(js.compilerPC));
-		WriteExceptionExit();
+		// Restart the block at the load
+		WriteExit(js.compilerPC, ExitExceptionCheck::IDLE_AND_CHECK_ALL_EXCEPTIONS);
 
 		SetJumpTarget(noIdle);
 	}

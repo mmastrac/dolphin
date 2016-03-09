@@ -394,16 +394,14 @@ void Jit64::mtmsr(UGeckoInstruction inst)
 	TEST(32, M(&ProcessorInterface::m_InterruptCause), Imm32(ProcessorInterface::INT_CAUSE_CP));
 	FixupBranch cpInt = J_CC(CC_NZ);
 
-	MOV(32, PPCSTATE(pc), Imm32(js.compilerPC + 4));
-	WriteExternalExceptionExit();
+	WriteExit(js.compilerPC + 4, ExitExceptionCheck::CHECK_EXTERNAL_EXCEPTIONS);
 
 	SetJumpTarget(cpInt);
 	SetJumpTarget(noExceptionsPending);
 	SetJumpTarget(eeDisabled);
 
-	auto scratch = regs.gpr.Borrow();
-	MOV(32, scratch, Imm32(js.compilerPC + 4));
-	WriteExitDestInRSCRATCH();
+	// Restart the JIT for this block
+	WriteExit(js.compilerPC + 4);
 }
 
 void Jit64::mfmsr(UGeckoInstruction inst)

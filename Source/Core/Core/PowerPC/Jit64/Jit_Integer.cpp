@@ -341,19 +341,20 @@ void Jit64::reg_imm(UGeckoInstruction inst)
 
 bool Jit64::CheckMergedBranch(int crf)
 {
-	if (!analyzer.HasOption(PPCAnalyst::PPCAnalyzer::OPTION_BRANCH_MERGE))
-		return false;
+	return false;
+	// if (!analyzer.HasOption(PPCAnalyst::PPCAnalyzer::OPTION_BRANCH_MERGE))
+	// 	return false;
 
-	if (!MergeAllowedNextInstructions(1))
-		return false;
+	// if (!MergeAllowedNextInstructions(1))
+	// 	return false;
 
-	const UGeckoInstruction& next = js.op[1].inst;
-	return (((next.OPCD == 16 /* bcx */) ||
-	        ((next.OPCD == 19) && (next.SUBOP10 == 528) /* bcctrx */) ||
-	        ((next.OPCD == 19) && (next.SUBOP10 == 16) /* bclrx */)) &&
-	         (next.BO & BO_DONT_DECREMENT_FLAG) &&
-	        !(next.BO & BO_DONT_CHECK_CONDITION) &&
-	         (next.BI >> 2) == crf);
+	// const UGeckoInstruction& next = js.op[1].inst;
+	// return (((next.OPCD == 16 /* bcx */) ||
+	//         ((next.OPCD == 19) && (next.SUBOP10 == 528) /* bcctrx */) ||
+	//         ((next.OPCD == 19) && (next.SUBOP10 == 16) /* bclrx */)) &&
+	//          (next.BO & BO_DONT_DECREMENT_FLAG) &&
+	//         !(next.BO & BO_DONT_CHECK_CONDITION) &&
+	//          (next.BI >> 2) == crf);
 }
 
 void Jit64::DoMergedBranch()
@@ -363,9 +364,6 @@ void Jit64::DoMergedBranch()
 	const u32 nextPC = js.op[1].address;
 	if (next.OPCD == 16) // bcx
 	{
-		if (next.LK)
-			MOV(32, M(&LR), Imm32(nextPC + 4));
-
 		u32 destination;
 		if (next.AA)
 			destination = SignExt16(next.BD << 2);
@@ -375,20 +373,11 @@ void Jit64::DoMergedBranch()
 	}
 	else if ((next.OPCD == 19) && (next.SUBOP10 == 528)) // bcctrx
 	{
-		if (next.LK)
-			MOV(32, M(&LR), Imm32(nextPC + 4));
-		MOV(32, R(RSCRATCH), M(&CTR));
-		AND(32, R(RSCRATCH), Imm32(0xFFFFFFFC));
-		WriteExitDestInRSCRATCH(next.LK, nextPC + 4);
+		WriteExit(PPCSTATE_CTR, next.LK, nextPC + 4);
 	}
 	else if ((next.OPCD == 19) && (next.SUBOP10 == 16)) // bclrx
 	{
-		MOV(32, R(RSCRATCH), M(&LR));
-		if (!m_enable_blr_optimization)
-			AND(32, R(RSCRATCH), Imm32(0xFFFFFFFC));
-		if (next.LK)
-			MOV(32, M(&LR), Imm32(nextPC + 4));
-		WriteBLRExit();
+		WriteExit(PPCSTATE_LR, next.LK, nextPC + 4);
 	}
 	else
 	{
@@ -2005,8 +1994,7 @@ void Jit64::twX(UGeckoInstruction inst)
 	OR(32, PPCSTATE(Exceptions), Imm32(EXCEPTION_PROGRAM));
 
 	branch.Flush();
-
-	WriteExceptionExit();
+	WriteExit(js.compilerPC + 4, ExitExceptionCheck::CHECK_ALL_EXCEPTIONS);
 
 	SetJumpTarget(dont_trap);
 

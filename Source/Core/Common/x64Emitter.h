@@ -155,6 +155,10 @@ struct OpArg
 		return operandReg == b.operandReg && scale == b.scale && offsetOrBaseReg == b.offsetOrBaseReg &&
 		       indexReg == b.indexReg && offset == b.offset;
 	}
+	bool operator!=(const OpArg& b) const
+	{
+		return !(*this == b);
+	}
 	void WriteREX(XEmitter* emit, int opBits, int bits, int customOp = -1) const;
 	void WriteVEX(XEmitter* emit, X64Reg regOp1, X64Reg regOp2, int L, int pp, int mmmmm, int W = 0) const;
 	void WriteRest(XEmitter* emit, int extraBytes=0, X64Reg operandReg=INVALID_REG, bool warn_64bit_offset = true) const;
@@ -941,6 +945,8 @@ public:
 	// Utility functions
 	// The difference between this and CALL is that this aligns the stack
 	// where appropriate.
+	template <typename F>
+	void ABI_CallFunction(F func) { static_assert(std::is_function<typename std::remove_pointer<F>::type>::value || std::is_same<F, void*>::value, "Must be a function"); return ABI_CallFunction((const void*)func); }
 	void ABI_CallFunction(const void* func);
 
 	void ABI_CallFunctionC16(const void* func, u16 param1);
